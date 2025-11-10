@@ -1,8 +1,10 @@
 [project]
 name = "nbs-uncertainty-estimation"
-version = "0.1.0"
-description = "Add your description here"
-requires-python = ">=3.8"
+version = "0.0.1"
+description = "Python Codes for testing various Uncertainty Estimation methods"
+requires-python = ">=3.10"
 dependencies = [
+    "gdal==3.11.5",
     "notebook>=7.3.3",
+    "numpy>=1.24.4",
 ]
