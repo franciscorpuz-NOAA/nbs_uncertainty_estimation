@@ -1,3 +1,8 @@
+[build-system]
+requires = ["setuptools >= 77.0.3"]
+build-backend = "setuptools.build_meta"
+
+
 [project]
 name = "nbs-uncertainty-estimation"
 version = "0.0.1"
@@ -7,4 +12,24 @@ dependencies = [
     "gdal==3.11.5",
     "notebook>=7.3.3",
     "numpy>=1.24.4",
+    "pip>=25.3",
 ]
+authors = [
+  {name = "Francis Corpuz", email = "francis.corpuz@noaa.gov"},
+  {name = "Glen Rice", email = "glen.rice@noaa.gov"},
+  {name = "Elias Adediran", email = "elias.adediran@unh.edu"},
+]
+readme = "README.md"
+license = "CC0-1.0"
+classifiers = [
+    "Development Status :: 3 - Alpha",
+    "Intended Audience :: Science/Research",
+    "Intended Audience :: Developers",
+    "Programming Language :: Python :: 3.9",
+    "Topic :: Scientific/Engineering :: Information Analysis",
+    "Topic :: Scientific/Engineering :: Oceanography",
+]
+
+[project.urls]
+Homepage = "https://nauticalcharts.noaa.gov/learn/nbs.html"
+
