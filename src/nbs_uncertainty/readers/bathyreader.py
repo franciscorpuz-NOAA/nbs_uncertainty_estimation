@@ -1,13 +1,19 @@
 from abc import ABC, abstractmethod
-from .bathymetry import RasterBathymetry, BPSBathymetry, CSVBathymetry
-from osgeo import gdal
 from pathlib import Path
+import numpy as np
+
+from osgeo import gdal
+
+from .bathymetry import RasterBathymetry, BPSBathymetry, CSVBathymetry
+from ..processors.preprocessors import remove_edge_ndv, make_square
+from ..utils.helper import get_config
 
 
 class BathyReader(ABC):
     """
     Abstract class for reading bathymetry files
     """
+    config = get_config()
 
     @abstractmethod
     def read_file(self, filename: str | Path):
@@ -32,6 +38,11 @@ class RasterBathyReader(BathyReader):
     """
     gdal.UseExceptions()
     def read_file(self, filename: str | Path) -> RasterBathymetry:
+
+        # check if a directory for rasters is defined
+        data_directory = self.config["DEFAULT"]["data_directory"]
+        if data_directory:
+            full_path  = str(Path(data_directory) / filename)
 
         if not self.is_valid_filename(filename):
             raise RuntimeError("Error reading bathymetry file")
@@ -60,6 +71,9 @@ class RasterBathyReader(BathyReader):
                       Setting resolution value to 1")
                 resolution = 1
 
+            tiff_data.set_resolution(resolution)
+            depth = remove_edge_ndv(depth, ndv)
+            depth = make_square(depth)
             tiff_data.set_resolution(resolution)
             tiff_data.set_data(depth)
             tiff_data.set_nodata_value(ndv)

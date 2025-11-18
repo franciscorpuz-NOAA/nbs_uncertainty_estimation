@@ -23,8 +23,10 @@ class RasterBathymetry(Bathymetry):
     Includes variables for the resolution, bathy_data and nan_value
     """
     resolution: int
-    data: np.ndarray[Tuple[int, int], np.dtype[float]]
+    data: np.ndarray
     ndv_value: np.dtype[np.number]
+    min_val: np.dtype[np.number]
+    max_val: np.dtype[np.number]
 
     def __init__(self, name: str):
         self.name = name
@@ -35,6 +37,7 @@ class RasterBathymetry(Bathymetry):
 
     def set_data(self, data):
         self.data = data
+        self.min_val, self.max_val = np.nanmin(data.flatten()), np.nanmax(data.flatten())
 
     def set_nodata_value(self, ndv_value):
         self.ndv_value = ndv_value
@@ -45,7 +48,7 @@ class RasterBathymetry(Bathymetry):
         data_type: {self.data_type} \n \
         resolution: {self.resolution} \n \
         ndv_value: {self.ndv_value} \n \
-        min\max value: [{np.nanmin(self.data.flatten()),np.nanmax(self.data.flatten())}] \n \
+        min\max value: [{self.min_val, self.max_val}] \n \
         data_shape: {self.data.shape}")
 
 
