@@ -1,5 +1,8 @@
 from abc import ABC, abstractmethod
+from collections.abc import Callable
 from typing import Union
+from .spectralEstimators import SpectralEstimator
+from .spatialEstimators import SpatialEstimator
 
 import numpy as np
 
@@ -11,32 +14,8 @@ from ..readers.bathymetry import (Bathymetry,
 from ..utils.helper import (get_column_indices,
                             matrix2strip,
                             strip2matrix,
-                            subsample)
-from .spectralEstimators import amplitude_v2,psd_v2
+                            subsample, upsample)
 
-
-class EstimatorSelector:
-    """
-    Factory for creating surface estimators based on bathymetry data type.
-    """
-    estimators_dict = {
-        'raster': 'RasterEstimator',
-        'csv': 'CSVEstimator',
-        'bps': 'BPSEstimator'
-    }
-
-    @staticmethod
-    def create_estimator(bathy_file: Bathymetry) -> 'SurfaceEstimator':
-        """
-        Selects and returns an appropriate surface estimator based on the data type.
-        """
-        data_type = bathy_file.data_type
-        estimator_class_name = EstimatorSelector.estimators_dict.get(data_type)
-        if estimator_class_name:
-            estimator_class = globals()[estimator_class_name]
-            return estimator_class(bathy_file)
-        else:
-            raise RuntimeError(f"Unrecognized Bathymetry type: {data_type}")
 
 
 class SurfaceEstimator(ABC):
@@ -66,7 +45,6 @@ class SurfaceEstimator(ABC):
         :return:
         """
         raise NotImplementedError
-
 
 
 class RasterEstimator(SurfaceEstimator):
@@ -128,11 +106,12 @@ class RasterEstimator(SurfaceEstimator):
         interpolation_in_strip = np.linspace(start=data_in_strip[:, 0],
                                          stop=data_in_strip[:, -1],
                                          num=data_in_strip.shape[1])
+
         interpolated_strip = interpolation_in_strip.T
         residual_in_strip = data_in_strip - interpolated_strip
 
         # convert "strips" back to original data dimensions
-        output_interpolation = strip2matrix(interpolation_in_strip,
+        output_interpolation = strip2matrix(interpolated_strip,
                                           original_shape=input_array.shape,
                                           column_indices=self.column_indices)
 
@@ -147,6 +126,7 @@ class RasterEstimator(SurfaceEstimator):
 
     def estimate_surface(self) -> np.ndarray:
 
+        subsampling_method = self.subsampling
         # compute new indices based on current linespacing and multiple
         current_column_indices = get_column_indices(self.data_array.shape[1],
                                                  self.resolution,
@@ -155,19 +135,26 @@ class RasterEstimator(SurfaceEstimator):
         # subsample depth data
         subsampled_data_array = subsample(data = self.data_array,
                                           column_indices = current_column_indices,
-                                          method = self.subsampling)
+                                          method = subsampling_method)
+
         subsampled_residual, _ = self.compute_residual(subsampled_data_array,
                                                        self.current_multiple)
 
         uncertainty_function = UncertaintyMethodSelector.select_estimator(self.method)
 
-        uncertainty_output = uncertainty_function.compute_uncertainty(subsampled_residual)
+        data_strip_of_multiple = matrix2strip(subsampled_residual,
+                                            self.column_indices,
+                                            multiple=self.current_multiple)
 
-        # data_strip_of_multiple = matrix2strip(subsampled_residual,
-        #                                     self.column_indices,
-        #                                     multiple=self.current_multiple)
+        uncertainty_in_strip = uncertainty_function.compute_uncertainty(data_strip_of_multiple,
+                                                                      multiple=self.current_multiple,
+                                                                      method=self.method)
 
 
+
+        uncertainty_output = upsample(subsampled_data=uncertainty_in_strip,
+                                      column_indices=current_column_indices,
+                                      method=subsampling_method)
 
 
         return uncertainty_output
@@ -183,8 +170,13 @@ class CSVEstimator(SurfaceEstimator):
     def __init__(self, bathy_file: CSVBathymetry) -> None:
         super().__init__(bathy_file)
 
+
     def estimate_surface(self) -> np.ndarray:
-        return super().estimate_surface()
+        pass
+
+    def compute_residual(self) -> None:
+        pass
+
 
 
 # For Future Implementation
@@ -197,32 +189,56 @@ class BPSEstimator(SurfaceEstimator):
         super().__init__(bathy_file)
 
     def estimate_surface(self) -> np.ndarray:
-        return super().estimate_surface()
+        pass
 
+    def compute_residual(self) -> None:
+        pass
+
+
+
+class EstimatorSelector:
+    """
+    Factory for creating surface estimators based on bathymetry data type.
+    """
+
+    @staticmethod
+    def create_estimator(bathy_file: Bathymetry) -> 'SurfaceEstimator':
+        """
+        Selects and returns an appropriate surface estimator based on the data type.
+        """
+        estimator_types = {
+            'raster': RasterEstimator(bathy_file),
+            'csv': CSVEstimator(bathy_file),
+            'bps': BPSEstimator(bathy_file)
+        }
+        estimator = estimator_types.get(bathy_file.data_type)
+        if estimator:
+            return estimator
+        else:
+            raise RuntimeError(f"Unrecognized Bathymetry type: {bathy_file.data_type}")
 
 
 class UncertaintyMethodSelector:
     """
     Class template for computing uncertainty estimation
     """
-    uncertainty_methods = {
-        # 'amplitude_v1': 'amplitude_v1',
-        # 'psd_v1': 'psd_v1',
-        # 'spectrum_v1': 'spectrum_v1',
-        'amplitude_v2': amplitude_v2,
-        'psd_v2': psd_v2,
-        'spectrum_v2': 'spectrum_v2',
-        'diff_max': 'diff_max',
-        'diff_ave': 'diff_ave',
-        'diff_std': 'diff_std',
 
-    }
 
     @staticmethod
-    def select_estimator(self, method: str) -> UncertaintyEstimator:
-        if method in UncertaintyMethodSelector.uncertainty_methods:
-            return UncertaintyMethodSelector.uncertainty_methods[method]
+    def select_estimator(method: str) -> UncertaintyEstimator:
+        uncertainty_methods = {
+            # 'amplitude_v1': 'amplitude_v1',
+            # 'psd_v1': 'psd_v1',
+            # 'spectrum_v1': 'spectrum_v1',
+            'amplitude_v2': SpectralEstimator,
+            'psd_v2': SpectralEstimator,
+            # 'std_envelope_1' :
+            # 'spectrum_v2': spectrum_v2,
+            'diff_max': SpatialEstimator,
+            'diff_ave': SpatialEstimator,
+            'diff_std': SpatialEstimator,
+        }
+        if method in uncertainty_methods:
+            return uncertainty_methods.get(method)
         else:
             raise NotImplementedError(f"Method {method} not implemented")
-
-

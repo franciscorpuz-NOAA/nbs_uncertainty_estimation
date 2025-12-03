@@ -1,7 +1,6 @@
 from abc import ABC, abstractmethod
 import numpy as np
-
-
+from typing import Callable
 
 class UncertaintyEstimator(ABC):
     """
@@ -11,5 +10,6 @@ class UncertaintyEstimator(ABC):
     @abstractmethod
     def compute_uncertainty(self) -> np.ndarray:
         raise NotImplementedError
+
 
 

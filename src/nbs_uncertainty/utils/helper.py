@@ -205,7 +205,7 @@ def transform_matrix(matrix_data, row_indices):
     return matrix_data
 
 
-def subsample(data:np.ndarray, column_indices: list, method: str):
+def subsample(data:np.ndarray, column_indices: np.ndarray, method: str):
     # possible values: "along", "across", "along-tiled", "across-tiled"
     if method == "across":
         return data

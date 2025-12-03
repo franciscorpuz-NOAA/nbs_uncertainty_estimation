@@ -80,7 +80,7 @@ class SpectralEstimator(UncertaintyEstimator):
         return energy, r_frequencies
 
 
-class amplitude_v2(UncertaintyEstimator):
+class amplitude_v2(SpectralEstimator):
     def compute_uncertainty(self) -> np.ndarray:
         data = self.data
         resolution = self.resolution
@@ -120,7 +120,7 @@ class amplitude_v2(UncertaintyEstimator):
 
         return output
 
-class psd_v2(UncertaintyEstimator):
+class psd_v2(SpectralEstimator):
     def compute_uncertainty(self) -> np.ndarray:
         data = self.data
         resolution = self.resolution
