@@ -45,6 +45,9 @@ class Bathymetry:
         return (f"Filename: {Path(full_path).name}"
                 f"\n Location: {Path(full_path).parent}")
 
+    def set_parameters(self, params: dict):
+        self.metadata.update(params)
+
     def __repr__(self) -> str:
         return (f"data shape: {self.data.shape}"
                 f"\n metadata: {self.metadata}")
