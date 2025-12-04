@@ -1,11 +1,10 @@
-from .uncertaintyEstimators import UncertaintyEstimator
 from ..utils.helper import matrix2strip, strip2matrix
 
 import numpy as np
 from scipy import signal
 
 
-class SpectralEstimator(UncertaintyEstimator):
+class SpectralEstimator:
     """
     Estimator for spectrally-based uncertainty models.
     """

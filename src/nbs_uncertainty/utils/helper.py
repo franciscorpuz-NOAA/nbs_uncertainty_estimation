@@ -1,6 +1,8 @@
 import configparser
 import numpy as np
 from numpy.lib.stride_tricks import sliding_window_view
+from ..readers.bathymetry import Bathymetry
+from typing import Dict
 
 def get_config(config_path: str = '../config/config.ini') -> configparser.ConfigParser:
     config = configparser.ConfigParser()
@@ -243,3 +245,54 @@ def upsample(subsampled_data:np.ndarray, column_indices: list[int], method: str)
         return upsampled_data
     else:
         raise ValueError(f"Unknown method: {method}")
+
+
+def compute_residual(bathy_data: Bathymetry, params: Dict) -> np.ndarray:
+    """
+    Compute the residual error from estimating the data using
+    linear interpolation
+
+    This function computes the estimate for the data strip
+    using the edge values and returns the residual error
+
+    Parameters
+    ----------
+
+    bathy_data : Bathymetry
+                 Bathymetry object
+
+    params : Dict
+            custom parameters based on data type
+
+    Returns
+    -------
+    residual : np.array
+               Difference of the interpolation from the input data strip
+
+    """
+
+    depth_data = bathy_data.data.copy()
+
+    # compute column indices based on pre-defined params
+    column_indices = get_column_indices(array_len=depth_data.shape[1],
+                                        resolution=bathy_data.metadata['resolution'],
+                                        linespacing_meters=params['linespacing'],
+                                        max_multiple=params['max_multiple'])
+
+    depth_data_strip = matrix2strip(depth_data,
+                                         column_indices=column_indices,
+                                         multiple=1)
+
+
+    interpolated_strip = np.linspace(start=depth_data_strip[:, 0],
+                                     stop=depth_data_strip[:, -1],
+                                     num=depth_data_strip.shape[1])
+
+    interpolated_strip = interpolated_strip.T
+    residual_strip = depth_data_strip - interpolated_strip
+
+    residual = strip2matrix(data_strip=residual_strip,
+                             original_shape=depth_data.shape,
+                             column_indices=column_indices)
+
+    return residual

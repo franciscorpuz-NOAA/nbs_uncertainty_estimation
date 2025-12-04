@@ -34,3 +34,9 @@ classifiers = [
 [project.urls]
 Homepage = "https://nauticalcharts.noaa.gov/learn/nbs.html"
 
+[dependency-groups]
+dev = [
+    "matplotlib>=3.10.7",
+    "pytest>=9.0.1",
+]
+

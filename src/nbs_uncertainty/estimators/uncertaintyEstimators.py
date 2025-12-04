@@ -1,15 +1,15 @@
-from abc import ABC, abstractmethod
-import numpy as np
-from typing import Callable
+from ..processors.bathy_processors import BathyProcessor
+from ..readers.bathymetry import RasterBathymetry
+from ..utils import helper
 
-class UncertaintyEstimator(ABC):
-    """
-    Abstract class for uncertainty estimation methods
-    """
 
-    @abstractmethod
-    def compute_uncertainty(self) -> np.ndarray:
-        raise NotImplementedError
+#Method lists
+@BathyProcessor.register("residual", RasterBathymetry)
+def compute_raster_residual(bathy_data: RasterBathymetry, param: dict | None):
+    return helper.compute_residual(bathy_data, param)
+
+# @BathyProcessor.register("psd_v1", RasterBathymetry)
+# def glen_psd()
 
 
 
