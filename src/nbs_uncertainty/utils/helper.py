@@ -247,7 +247,7 @@ def upsample(subsampled_data:np.ndarray, column_indices: list[int], method: str)
         raise ValueError(f"Unknown method: {method}")
 
 
-def compute_residual(bathy_data: Bathymetry, params: Dict) -> np.ndarray:
+def compute_residual(bathy_data: Bathymetry, params: Dict | None) -> np.ndarray:
     """
     Compute the residual error from estimating the data using
     linear interpolation
