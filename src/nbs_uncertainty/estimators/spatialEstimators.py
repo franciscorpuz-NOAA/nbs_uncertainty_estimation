@@ -233,6 +233,57 @@ def glen_get_uncertainties(data, resolution, multiple, method="amplitude"):
 
 
 
+def get_difference_uncertainties(data:np.ndarray, 
+                                      interpolation_cell_distance:int, 
+                                      min_window:int = 2, 
+                                      multiple:int = 1,
+                                      method:str = 'max') -> np.ndarray:
+    """
+    Calculate the variance of the provided data array in parts.
+    """
+    num_lines, num_samples = data.shape
+    interpolation_cell_distance = ((interpolation_cell_distance-2)//multiple)+2
+    # interpolation_cell_distance = num_samples
+    differences = np.array([])
+    output = np.full((num_lines, interpolation_cell_distance), 0.0)
+    # difference_max = np.full((num_lines, interpolation_cell_distance), 0.0)
+    # difference_mean = np.full((num_lines, interpolation_cell_distance), 0.0)
+    # difference_std = np.full((num_lines, interpolation_cell_distance), 0.0)
+    for win_len in range(min_window, interpolation_cell_distance//2+1):
+        # num_convolutions = num_samples - win_len + 1
+        # differences = np.full((num_lines, num_convolutions), 0.0)
+        # for step in range(num_convolutions):
+        #     mins = np.min(data[:,step:step+win_len], axis = -1)
+        #     maxs = np.max(data[:,step:step+win_len], axis = -1)
+        #     stds = np.std(data[:,step:step+win_len], axis = -1)
+        #     differences[:,step] = maxs - mins
+        # difference_max[:, win_len-1] = np.max(differences, axis=-1)
+        # difference_mean[:, win_len-1] = np.mean(differences, axis =-1)
+        # difference_std[:, win_len-1] = np.std(differences, axis =-1)
+        windows = np.lib.stride_tricks.sliding_window_view(data, window_shape=win_len, axis=-1)
+        mins = np.min(windows, axis = -1)
+        maxs = np.max(windows, axis = -1)
+        stds = np.std(windows, axis = -1)
+        differences = maxs - mins
+    
+        if method == 'max':
+            output[:, win_len-1] = np.max(differences, axis=-1)
+        elif method == 'mean':
+            output[:, win_len-1] = np.mean(differences, axis =-1)
+        elif method == 'std':
+            output[:, win_len-1] = np.std(differences, axis =-1)
+        elif method == 'gaussian':
+            output[:, win_len-1] = 
+        elif method == 'gev':
+            return difference_std   
 
+    # print(f"final convolutions for window length {win_len} is {num_convolutions}")
+    # difference_max[:,-win_len:] = np.fliplr(difference_max[:, :win_len])
+    # difference_mean[:,-win_len:] = np.fliplr(difference_mean[:, :win_len])
+    # difference_std[:,-win_len:] = np.fliplr(difference_std[:,:win_len])
+    
+    else:
+        raise ValueError(f"Unknown method: {method}. \
+                           Choose from 'max', 'mean', or 'std'.")
 
 
