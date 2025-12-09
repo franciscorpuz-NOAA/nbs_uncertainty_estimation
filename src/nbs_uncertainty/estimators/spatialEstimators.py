@@ -4,7 +4,7 @@ from typing import Callable
 from scipy.stats import genextreme
 from functools import partial
 from ..readers.bathymetry import RasterBathymetry
-from ..utils.helper import get_column_indices
+from ..utils.helper import get_column_indices, subsample, upsample
 from dataclasses import dataclass
 
 @dataclass
@@ -13,7 +13,7 @@ class SpatialEstimator:
     Estimator for spectrally-based uncertainty models.
     """
 
-    data: RasterBathymetry
+    bathy_data: RasterBathymetry
     # multiple: int
     # resolution: int
     # windowing: str
@@ -25,15 +25,15 @@ class SpatialEstimator:
     depth_data_strip: np.ndarray = None
 
     def pre_process(self) -> np.ndarray:
-        depth_data = self.data.data
+        depth_data = self.bathy_data.data
         self.column_indices = get_column_indices(array_len=depth_data.shape[1],
-                                            resolution=self.data.metadata['resolution'],
-                                            linespacing_meters=self.data.metadata['linespacing'],
-                                            max_multiple=self.data.metadata['max_multiple'])
+                                            resolution=self.bathy_data.metadata['resolution'],
+                                            linespacing_meters=self.bathy_data.metadata['linespacing'],
+                                            max_multiple=self.bathy_data.metadata['max_multiple'])
 
         depth_data_strip = matrix2strip(depth_data,
                                         column_indices=self.column_indices,
-                                        multiple=self.data.metadata['current_multiple'])
+                                        multiple=self.bathy_data.metadata['current_multiple'])
 
         if depth_data_strip.ndim < 2:
             depth_data_strip = depth_data_strip.reshape(1, -1)
@@ -43,7 +43,7 @@ class SpatialEstimator:
 
     def post_process(self, uncertainty_strip:np.ndarray) -> np.ndarray:
         # Remove edges when computing the original linespacing
-        linespacing_width = int((self.depth_data_strip.shape[1] - 2) / self.data.metadata['current_multiple'])
+        linespacing_width = int((self.depth_data_strip.shape[1] - 2) / self.bathy_data.metadata['current_multiple'])
         # Include edges again for the output strip
         output = np.zeros(shape=(self.depth_data_strip.shape[0], linespacing_width + 2))
         num_cols = output.shape[1]
@@ -53,7 +53,7 @@ class SpatialEstimator:
         output[:, int(num_cols / 2):] = np.fliplr(selected_data)
 
         output = strip2matrix(data_strip=output,
-                     original_shape=self.data.data.shape,
+                     original_shape=self.bathy_data.data.shape,
                      column_indices=self.column_indices)
 
         return output
@@ -97,7 +97,7 @@ class SpatialStd(SpatialEstimator):
 
         data_strip = self.pre_process()
         interpolation_cell_distance = data_strip.shape[1]
-        multiple = self.data.metadata['current_multiple']
+        multiple = self.bathy_data.metadata['current_multiple']
         win_len = 0
 
 
@@ -140,7 +140,9 @@ class SpatialStd(SpatialEstimator):
                    'std_envelope1': std_envelope1,
                    'std_envelope2': std_envelope2,
                    'std_envelope3': std_envelope3}
-        self.data.metadata['results'] = results
+        self.bathy_data.metadata['results'] = results
+        
+        return self.bathy_data
 
 
 class SpatialDiff(SpatialEstimator):
@@ -154,7 +156,7 @@ class SpatialDiff(SpatialEstimator):
 
         data_strip = self.pre_process()
         interpolation_cell_distance = data_strip.shape[1]
-        multiple = self.data.metadata['current_multiple']
+        multiple = self.bathy_data.metadata['current_multiple']
         win_len = 0
 
 
@@ -200,8 +202,8 @@ class SpatialDiff(SpatialEstimator):
                    'difference_envelope2': diff_envelope2,
                    'diff_envelope3': diff_envelope3,
                    }
-        self.data.metadata['results'] = results
-
+        self.bathy_data.metadata['results'] = results
+        return self.bathy_data
 
 class SpatialGEV(SpatialEstimator):
 
@@ -251,8 +253,8 @@ class SpatialGEV(SpatialEstimator):
                    'gev_p95_stats': gev_p95_stats,
                    'gev_p99_stats': gev_p99_stats
                    }
-        self.data.metadata['results'] = results
-
+        self.bathy_data.metadata['results'] = results
+        return self.bathy_data
 
 class SpatialGaussian(SpatialEstimator):
     def compute_uncertainty(self):
@@ -263,7 +265,7 @@ class SpatialGaussian(SpatialEstimator):
 
         data_strip = self.pre_process()
         interpolation_cell_distance = data_strip.shape[1]
-        multiple = self.data.metadata['current_multiple']
+        multiple = self.bathy_data.metadata['current_multiple']
         win_len = 0
 
 
@@ -298,8 +300,8 @@ class SpatialGaussian(SpatialEstimator):
                    'gaussian_p95_stats': gaussian_p95_stats,
                    'gaussian_p99_stats': gaussian_p99_stats
                    }
-        self.data.metadata['results'] = results
-
+        self.bathy_data.metadata['results'] = results
+        return self.bathy_data
 
 
 

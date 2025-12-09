@@ -323,3 +323,156 @@ def uncertainty_comparison(residuals, uncertainties):
         "std_dev": std_dev,
         "sharp": sharp,
         "corr": corr}, uncertainties[nonzero_idx], np.abs(residuals[nonzero_idx])
+    
+    
+def multi_uncertainty_comparison(
+    residuals: np.ndarray,
+    uncertainties_dict: dict[str, np.ndarray],
+    resolution,
+    desired_linespacing_meters=None,
+    fn=None,
+    plot_grid=(4, 3),
+    path=None,
+    plot_boxplots=True
+):
+    """
+    Compare multiple uncertainty surfaces against residuals in one figure.
+
+    Parameters
+    ----------
+    residuals : np.ndarray
+        2D array of residual surface.
+    uncertainties_dict : dict
+        Dictionary of uncertainty name -> uncertainty array.
+    resolution : float
+        Grid resolution in meters.
+    desired_linespacing_meters : float, optional
+        Used for labeling titles.
+    fn : str, optional
+        Surface name for the first title.
+    plot_grid : tuple
+        (nrows, ncols) for subplot grid.
+    """
+    
+    import matplotlib.pyplot as plt
+
+    def uncertainty_comparison(residuals:np.ndarray, uncertainties:np.ndarray):
+        nonzero_idx = np.nonzero(
+            (residuals != 0) & (~np.isnan(residuals)) & (uncertainties != 0)
+        )
+        print(nonzero_idx)
+        uncertainty_ratio = np.full(residuals.shape, np.nan)
+        uncertainty_ratio[nonzero_idx] = uncertainties[nonzero_idx] / np.abs(residuals[nonzero_idx])
+        fail_points = np.nonzero(uncertainty_ratio < 1)
+        ur_flat = uncertainty_ratio[nonzero_idx].flatten()
+        total_count = len(ur_flat)
+        fail_count = len(fail_points[0])
+        pass_percentage = 100 - fail_count / total_count * 100
+        current_rmse = np.sqrt(np.mean((residuals[nonzero_idx] - uncertainties[nonzero_idx]) ** 2))
+        mean_error = np.mean(uncertainties[nonzero_idx] - np.abs(residuals[nonzero_idx]))
+        std_dev = np.std(uncertainties[nonzero_idx] - np.abs(residuals[nonzero_idx]))
+        sharp = np.mean(uncertainties[nonzero_idx])
+        corr = np.corrcoef(uncertainties[nonzero_idx], np.abs(residuals[nonzero_idx]))[0, 1] if len(np.abs(residuals[nonzero_idx])) > 1 else np.nan
+
+        return pass_percentage, current_rmse, mean_error, std_dev, sharp, corr
+
+    # ---- Create figure ----
+    nrows, ncols = plot_grid
+    fig, axes = plt.subplots(nrows=nrows, ncols=ncols, figsize=(15, 12), layout="constrained")
+
+    axes = axes.flatten()
+    names = list(uncertainties_dict.keys())
+    results = []
+
+    for i, (name, uncertainty) in enumerate(uncertainties_dict.items()):
+        ax = axes[i]
+
+        # Compute stats
+        pass_percentage, rmse, mean_error, std_dev, sharp, corr = uncertainty_comparison(residuals, uncertainty)
+
+        # Append stats for CSV
+        results.append({
+            "Seabed": fn,
+            "Uncertainty Method": name,
+            "Line spacing ": desired_linespacing_meters,
+            "Pass %": pass_percentage,
+            "RMSE": rmse,
+            "Bias (Mean Error)": mean_error,
+            "Std Dev": std_dev,
+            "Sharpness": sharp,
+            "Correlation": corr
+        })
+
+        # Scatter comparison plot
+        nonzero_idx = np.nonzero(
+            (residuals != 0) & (~np.isnan(residuals)) & (uncertainty != 0)
+        )
+        max_unc = np.max(uncertainty[nonzero_idx])
+        ax.plot(np.abs(residuals[nonzero_idx]), uncertainty[nonzero_idx], ".", alpha=0.3)
+        ax.plot([0, max_unc], [0, max_unc], "r", lw=1)
+
+        ax.set_xlabel("Abs. Residual (m)")
+        ax.set_ylabel("Uncertainty (m)")
+        ax.set_xlim(0, max_unc)
+        ax.set_ylim(0, max_unc)
+        ax.grid(True, alpha=0.3)
+
+        # Title with stats
+        ax.set_title(
+            f"{name}\nPass: {pass_percentage:.1f}%  RMSE: {rmse:.2f}  Bias: {mean_error:.2f}\n  "
+            f"Corr: {corr:.2f}, Sharp: {sharp:.2f}",  fontsize=12,
+        )
+
+    # Remove unused axes
+    for j in range(i + 1, len(axes)):
+        fig.delaxes(axes[j])
+
+    if fn and desired_linespacing_meters:
+        fig.suptitle(
+            f"Uncertainty Comparisons for {fn} ({resolution}m grid, {desired_linespacing_meters}m spacing)",
+            fontsize=14,
+        )
+    else:
+        fig.suptitle("Uncertainty Comparisons", fontsize=14)
+    # outpath = f'{path}_uncertainty_comparisons.png'
+    # plt.savefig(outpath, bbox_inches='tight')
+    plt.show()
+
+
+    # # ---- Export to CSV ----
+    # if path:
+    #     df = pd.DataFrame(results)
+    #     outpath = f'{path}_stats.csv'
+    #     df.to_csv(f'{outpath}', index=False)
+    #     print(f"Statistics exported to {outpath}")
+
+    # # ---- Optional: Combined Boxplot of Residuals vs Uncertainties ----
+
+    # if plot_boxplots:
+    #     # Collect data
+    #     data = []
+    #     labels = []
+
+    #     # Residuals (absolute values)
+    #     res_vals = np.abs(residuals[(residuals != 0) & (~np.isnan(residuals))]).flatten()
+    #     data.append(res_vals)
+    #     labels.append("Abs.  Residuals")
+
+    #     # Each uncertainty
+    #     for name, uncertainty in uncertainties_dict.items():
+    #         unc_vals = uncertainty[(uncertainty != 0) & (~np.isnan(uncertainty))].flatten()
+    #         data.append(unc_vals)
+    #         labels.append(name)
+
+    #     # Combined boxplot
+    #     plt.figure(figsize=(10, 5))
+    #     plt.boxplot(data, patch_artist=True, labels=labels,
+    #                 boxprops=dict(facecolor='lightgray', alpha=0.7),
+    #                 medianprops=dict(color='red', linewidth=1.5))
+    #     plt.title(f"Uncertainty Boxplots for {fn} ({resolution}m grid, {desired_linespacing_meters}m spacing)")
+    #     plt.ylabel("Uncertainty (m)")
+    #     plt.grid(alpha=0.3)
+    #     plt.xticks(rotation=30)
+    #     outpath = f'{path}_uncertainty_boxplots.png'
+    #     plt.savefig(outpath, bbox_inches='tight')
+    #     plt.show()

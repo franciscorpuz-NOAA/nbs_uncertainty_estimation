@@ -4,6 +4,7 @@ from ..readers.bathymetry import (RasterBathymetry,
 
 from typing import Dict, Type, Callable, Tuple, Any, Union
 from copy import deepcopy
+import numpy as np
 
 
 class BathyProcessor:
@@ -41,8 +42,10 @@ class BathyProcessor:
             raise ValueError(f"{method_name} Processor not found for type {type(bathy_data)}")
         output = handler(bathy_data, *args, **kwargs)
         new_bathy = deepcopy(bathy_data)
-        if output:
+        if type(output) is np.ndarray:
             new_bathy.data = output
+        else:
+            new_bathy = deepcopy(output)
         if 'param' in kwargs.keys():
             settings = kwargs['param']
             new_bathy.metadata.update(settings)

@@ -8,7 +8,8 @@ from ..estimators.spatialEstimators import SpatialStd, SpatialDiff, SpatialGEV, 
 
 # Method lists
 @BathyProcessor.register("residual", RasterBathymetry)
-def compute_raster_residual(bathy_data: RasterBathymetry, param: dict | None):
+def compute_raster_residual(bathy_data: RasterBathymetry, *args, **kwargs):
+    param = kwargs.get("param", {})
     return helper.compute_residual(bathy_data, param)
 
 @BathyProcessor.register("amp_v1", RasterBathymetry)
@@ -104,7 +105,7 @@ def elias_spectrum(bathy_data: RasterBathymetry, *args, **kwargs):
 @BathyProcessor.register("spatial_std", RasterBathymetry)
 def get_spatial_std(bathy_data: RasterBathymetry, *args, **kwargs):
     return SpatialStd(
-        data=bathy_data,
+        bathy_data=bathy_data,
         # interpolation_cell_distance=bathy_data.data.shape[1],
         min_window=2,
         # multiple=param.get("multiple", 1),
@@ -115,7 +116,7 @@ def get_spatial_std(bathy_data: RasterBathymetry, *args, **kwargs):
 @BathyProcessor.register("spatial_diff", RasterBathymetry)
 def get_spatial_diff(bathy_data: RasterBathymetry, *args, **kwargs):
     return SpatialDiff(
-        data=bathy_data,
+        bathy_data=bathy_data,
         # interpolation_cell_distance=bathy_data.data.shape[1],
         min_window=2,
         # multiple=param.get("multiple", 1),
@@ -125,7 +126,7 @@ def get_spatial_diff(bathy_data: RasterBathymetry, *args, **kwargs):
 @BathyProcessor.register("spatial_gev", RasterBathymetry)
 def get_spatial_gev(bathy_data: RasterBathymetry, *args, **kwargs):
     return SpatialGEV(
-        data=bathy_data,
+        bathy_data=bathy_data,
         # interpolation_cell_distance=bathy_data.data.shape[1],
         min_window=2,
         # multiple=param.get("multiple", 1),
@@ -136,7 +137,7 @@ def get_spatial_gev(bathy_data: RasterBathymetry, *args, **kwargs):
 @BathyProcessor.register("spatial_gaussian", RasterBathymetry)
 def get_spatial_gaussian(bathy_data: RasterBathymetry, *args, **kwargs):
     return SpatialGaussian(
-        data=bathy_data,
+        bathy_data=bathy_data,
         # interpolation_cell_distance=bathy_data.data.shape[1],
         min_window=2,
         # multiple=param.get("multiple", 1),
