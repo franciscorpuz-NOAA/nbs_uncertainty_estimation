@@ -296,3 +296,30 @@ def compute_residual(bathy_data: Bathymetry, params: Dict | None) -> np.ndarray:
                              column_indices=column_indices)
 
     return residual
+
+def uncertainty_comparison(residuals, uncertainties):
+    nonzero_idx = np.nonzero(
+        (residuals != 0) & (~np.isnan(residuals)) & (uncertainties != 0)
+    )
+    uncertainty_ratio = np.full(residuals.shape, np.nan)
+    uncertainty_ratio[nonzero_idx] = uncertainties[nonzero_idx] / np.abs(residuals[nonzero_idx])
+    fail_points = np.nonzero(uncertainty_ratio < 1)
+    ur_flat = uncertainty_ratio[nonzero_idx].flatten()
+    total_count = len(ur_flat)
+    fail_count = len(fail_points[0])
+    pass_percentage = 100 - fail_count / total_count * 100
+    current_rmse = np.sqrt(np.mean((residuals[nonzero_idx] - uncertainties[nonzero_idx]) ** 2))
+    mean_error = np.mean(uncertainties[nonzero_idx] - np.abs(residuals[nonzero_idx]))
+    std_dev = np.std(uncertainties[nonzero_idx] - np.abs(residuals[nonzero_idx]))
+    sharp = np.mean(uncertainties[nonzero_idx])
+    corr = np.corrcoef(uncertainties[nonzero_idx], np.abs(residuals[nonzero_idx]))[0, 1] if len(np.abs(residuals[nonzero_idx])) > 1 else np.nan
+
+    return {
+        "total_cts": total_count,
+        "fail_cts": fail_count,
+        "percentage": pass_percentage,
+        "rmse": current_rmse,
+        "mean": mean_error,
+        "std_dev": std_dev,
+        "sharp": sharp,
+        "corr": corr}, uncertainties[nonzero_idx], np.abs(residuals[nonzero_idx])

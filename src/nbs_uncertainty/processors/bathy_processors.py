@@ -41,7 +41,8 @@ class BathyProcessor:
             raise ValueError(f"{method_name} Processor not found for type {type(bathy_data)}")
         output = handler(bathy_data, *args, **kwargs)
         new_bathy = deepcopy(bathy_data)
-        new_bathy.data = output
+        if output:
+            new_bathy.data = output
         if 'param' in kwargs.keys():
             settings = kwargs['param']
             new_bathy.metadata.update(settings)

@@ -181,6 +181,18 @@ class EliasUncertainty(SpectralV1):
             energy = energy[:, :-1]
             r_frequencies = r_frequencies[:-1]
 
+        elif method == "psd":
+            cden = np.sqrt(np.sum(window_values ** 2))
+            energy = resolution * (np.abs(rfft_values / cden) ** 2)
+
+            if num_cols % 2 == 0:  # even length → Nyquist bin exists
+                energy[:, 1:-1] *= 2
+            else:  # odd length → no Nyquist bin
+                energy[:, 1:] *= 2
+
+            energy = energy[:, :-1]
+            r_frequencies = r_frequencies[:-1]
+
         elif method == "psd_n":
             cden = np.sqrt(np.sum(window_values ** 2))
             energy = resolution * (np.abs(rfft_values / cden) ** 2)
@@ -194,6 +206,18 @@ class EliasUncertainty(SpectralV1):
             r_frequencies = r_frequencies[:-1]
 
         elif method == "psd_lf":
+            cden = np.sqrt(np.sum(window_values ** 2))
+            energy = resolution * (np.abs(rfft_values / cden) ** 2)
+
+            if num_cols % 2 == 0:  # even length → Nyquist bin exists
+                energy[:, 1:-1] *= 2
+            else:  # odd length → no Nyquist bin
+                energy[:, 1:] *= 2
+
+            energy = energy[:, :-1]
+            r_frequencies = r_frequencies[:-1]
+
+        elif method == "psd_df":
             cden = np.sqrt(np.sum(window_values ** 2))
             energy = resolution * (np.abs(rfft_values / cden) ** 2)
 
@@ -252,10 +276,14 @@ class EliasUncertainty(SpectralV1):
         variance = None
         if self.method == "amplitude":
             variance = ((energy ** 2) / preprocessed_signal.shape[1]) @ spatial_signal
+        elif self.method == "psd":
+            variance = (energy / preprocessed_signal.shape[1]) @ spatial_signal
         elif self.method == "psd_n":
             variance = (energy / preprocessed_signal.shape[1]) @ spatial_signal
         elif self.method == "psd_lf":
             variance = (energy / len(energy_freqs)) @ spatial_signal
+        elif self.method == "psd_df":
+            variance = (energy * df) @ spatial_signal
         elif self.method == "spectrum":
             variance = (energy / len(energy_freqs)) @ spatial_signal
         else:

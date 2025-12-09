@@ -17,7 +17,7 @@ class SpatialEstimator:
     # multiple: int
     # resolution: int
     # windowing: str
-    method: str
+    # method: str
     min_window: int = 2
 
     column_indices: np.ndarray = None
@@ -58,7 +58,38 @@ class SpatialEstimator:
 
         return output
 
+
     def compute_uncertainty(self) -> np.ndarray:
+        raise NotImplementedError
+
+    # @staticmethod
+    # def select_method(method: str) -> Callable:
+    #     method_dict = {
+    #         'average': np.mean,
+    #         'median': np.median,
+    #         'max': np.max,
+    #         'std': np.std,
+    #         # 'gev': genex,
+    #         'p95': partial(np.percentile, q=95, interpolation='nearest'),
+    #         'p99': partial(np.percentile, q=99, interpolation='nearest'),
+    #         # function for computing variance
+    #     }
+    #     return method_dict.get(method)
+
+    # def diff_std(self, temp_result: dict):
+    #     stds = temp_result['stds']
+    #     std_mean[:, win_len - 1] = np.mean(stds, axis=-1)
+    #     std_max[:, win_len - 1] = np.max(stds, axis=-1)
+    #     std_std = np.std(stds, axis=-1)
+    #     std_envelope1[:, win_len - 1] = std_mean[:, win_len - 1] + std_std
+    #     std_envelope2[:, win_len - 1] = std_mean[:, win_len - 1] + 2 * std_std
+    #     std_envelope3[:, win_len - 1] = std_mean[:, win_len - 1] + 3 * std_std
+
+
+class SpatialStd(SpatialEstimator):
+
+
+    def compute_uncertainty(self):
 
         """
         Calculate the variance of the provided data array in parts.
@@ -67,47 +98,225 @@ class SpatialEstimator:
         data_strip = self.pre_process()
         interpolation_cell_distance = data_strip.shape[1]
         multiple = self.data.metadata['current_multiple']
-        method = self.method
         win_len = 0
+
 
         num_lines, num_samples = data_strip.shape
         interpolation_cell_distance = ((interpolation_cell_distance - 2) // multiple) + 2
-        # interpolation_cell_distance = num_samples
-        # difference_mean = np.full((num_lines, interpolation_cell_distance), 0.0)
-        # difference_std = np.full((num_lines, interpolation_cell_distance), 0.0)
+        shape = (num_lines, interpolation_cell_distance)
         difference_stat = np.full((num_lines, interpolation_cell_distance), 0.0)
+
+        # containers
+        std_mean = np.zeros(shape)
+        std_max = np.zeros(shape)
+        std_envelope1 = np.zeros(shape)
+        std_envelope2 = np.zeros(shape)
+        std_envelope3 = np.zeros(shape)
+
+
         for win_len in range(self.min_window, interpolation_cell_distance // 2 + 1):
             num_convolutions = num_samples - win_len + 1
             differences = np.full((num_lines, num_convolutions), 0.0)
             for step in range(num_convolutions):
                 mins = np.min(data_strip[:, step:step + win_len], axis=-1)
                 maxs = np.max(data_strip[:, step:step + win_len], axis=-1)
+                stds = np.std(data_strip[:, step:step + win_len], axis=-1)
                 differences[:, step] = maxs - mins
-            current_method = self.select_method(method)
-            difference_stat[:, win_len - 1] = current_method(differences, axis=-1)
-            # difference_mean[:, win_len-1] = np.mean(differences, axis =-1)
-            # difference_std[:, win_len-1] = np.std(differences, axis =-1)
-        # print(f"final convolutions for window length {win_len} is {num_convolutions}")
-        difference_stat[:, -win_len:] = np.fliplr(difference_stat[:, :win_len])
-        # difference_mean[:,-win_len:] = np.fliplr(difference_mean[:, :win_len])
-        # difference_std[:,-win_len:] = np.fliplr(difference_std[:,:win_len])
 
-        output_data = self.post_process(difference_stat)
-        return output_data
+                std_mean[:, win_len - 1] = np.mean(stds, axis=-1)
+                std_max[:, win_len - 1] = np.max(stds, axis=-1)
+                std_std = np.std(stds, axis=-1)
+                std_envelope1[:, win_len - 1] = std_mean[:, win_len - 1] + std_std
+                std_envelope2[:, win_len - 1] = std_mean[:, win_len - 1] + 2 * std_std
+                std_envelope3[:, win_len - 1] = std_mean[:, win_len - 1] + 3 * std_std
 
-    @staticmethod
-    def select_method(method: str) -> Callable:
-        method_dict = {
-            'average': np.mean,
-            'median': np.median,
-            'max': np.max,
-            'std': np.std,
-            # 'gev': genex,
-            'p95': partial(np.percentile, q=95, interpolation='nearest'),
-            'p99': partial(np.percentile, q=99, interpolation='nearest'),
-            # function for computing variance
-        }
-        return method_dict.get(method)
+        std_mean[:, -win_len:] = np.fliplr(std_mean[:, :win_len])
+        std_max[:, -win_len:] = np.fliplr(std_max[:, :win_len])
+        std_envelope1[:, -win_len:] = np.fliplr(std_envelope1[:, :win_len])
+        std_envelope2[:, -win_len:] = np.fliplr(std_envelope2[:, :win_len])
+        std_envelope3[:, -win_len:] = np.fliplr(std_envelope3[:, :win_len])
+        results = {'std_mean': std_mean,
+                   'std_max': std_max,
+                   'std_envelope1': std_envelope1,
+                   'std_envelope2': std_envelope2,
+                   'std_envelope3': std_envelope3}
+        self.data.metadata['results'] = results
+
+
+class SpatialDiff(SpatialEstimator):
+
+
+    def compute_uncertainty(self):
+
+        """
+        Calculate the variance of the provided data array in parts.
+        """
+
+        data_strip = self.pre_process()
+        interpolation_cell_distance = data_strip.shape[1]
+        multiple = self.data.metadata['current_multiple']
+        win_len = 0
+
+
+        num_lines, num_samples = data_strip.shape
+        interpolation_cell_distance = ((interpolation_cell_distance - 2) // multiple) + 2
+        shape = (num_lines, interpolation_cell_distance)
+        difference_stat = np.full((num_lines, interpolation_cell_distance), 0.0)
+
+        # containers
+        difference_mean = np.zeros(shape)
+        difference_max = np.zeros(shape)
+        diff_envelope1 = np.zeros(shape)
+        diff_envelope2 = np.zeros(shape)
+        diff_envelope3 = np.zeros(shape)
+
+
+        for win_len in range(self.min_window, interpolation_cell_distance // 2 + 1):
+            num_convolutions = num_samples - win_len + 1
+            differences = np.full((num_lines, num_convolutions), 0.0)
+            for step in range(num_convolutions):
+                mins = np.min(data_strip[:, step:step + win_len], axis=-1)
+                maxs = np.max(data_strip[:, step:step + win_len], axis=-1)
+                stds = np.std(data_strip[:, step:step + win_len], axis=-1)
+                differences[:, step] = maxs - mins
+
+                diff_mean = np.mean(differences, axis=-1)
+                diff_std = np.std(differences, axis=-1)
+                diff_max = np.max(differences, axis=-1)
+                difference_mean[:, win_len - 1] = diff_mean
+                difference_max[:, win_len - 1] = diff_max
+                diff_envelope1[:, win_len - 1] = diff_mean + diff_std
+                diff_envelope2[:, win_len - 1] = diff_mean + 2 * diff_std
+                diff_envelope3[:, win_len - 1] = diff_mean + 3 * diff_std
+
+        difference_mean[:, -win_len:] = np.fliplr(difference_mean[:, :win_len])
+        difference_max[:, -win_len:] = np.fliplr(difference_max[:, :win_len])
+        diff_envelope1[:, -win_len:] = np.fliplr(diff_envelope1[:, :win_len])
+        diff_envelope2[:, -win_len:] = np.fliplr(diff_envelope2[:, :win_len])
+        diff_envelope3[:, -win_len:] = np.fliplr(diff_envelope3[:, :win_len])
+        results = {'difference_mean': difference_mean,
+                   'difference_max': difference_max,
+                   'difference_envelope1': diff_envelope1,
+                   'difference_envelope2': diff_envelope2,
+                   'diff_envelope3': diff_envelope3,
+                   }
+        self.data.metadata['results'] = results
+
+
+class SpatialGEV(SpatialEstimator):
+
+
+    def compute_uncertainty(self):
+
+        """
+        Calculate the variance of the provided data array in parts.
+        """
+
+        data_strip = self.pre_process()
+        interpolation_cell_distance = data_strip.shape[1]
+        multiple = self.data.metadata['current_multiple']
+        win_len = 0
+
+
+        num_lines, num_samples = data_strip.shape
+        interpolation_cell_distance = ((interpolation_cell_distance - 2) // multiple) + 2
+        shape = (num_lines, interpolation_cell_distance)
+        difference_stat = np.full((num_lines, interpolation_cell_distance), 0.0)
+
+        # containers
+        gev_mean = np.zeros(shape)
+        gev_p95_stats = np.zeros(shape)
+        gev_p99_stats = np.zeros(shape)
+
+
+        for win_len in range(self.min_window, interpolation_cell_distance // 2 + 1):
+            num_convolutions = num_samples - win_len + 1
+            differences = np.full((num_lines, num_convolutions), 0.0)
+            for step in range(num_convolutions):
+                mins = np.min(data_strip[:, step:step + win_len], axis=-1)
+                maxs = np.max(data_strip[:, step:step + win_len], axis=-1)
+                stds = np.std(data_strip[:, step:step + win_len], axis=-1)
+                differences[:, step] = maxs - mins
+
+                for i in range(num_lines):
+                    shape_, loc_, scale_ = genextreme.fit(differences[i])
+                    gev_mean[i, win_len - 1] = loc_
+                    gev_p95_stats[i, win_len - 1] = genextreme.ppf(0.95, shape_, loc_, scale_)
+                    gev_p99_stats[i, win_len - 1] = genextreme.ppf(0.99, shape_, loc_, scale_)
+
+        gev_mean[:, -win_len:] = np.fliplr(gev_mean[:, :win_len])
+        gev_p95_stats[:, -win_len:] = np.fliplr(gev_p95_stats[:, :win_len])
+        gev_p99_stats[:, -win_len:] = np.fliplr(gev_p99_stats[:, :win_len])
+        results = {'gev_mean': gev_mean,
+                   'gev_p95_stats': gev_p95_stats,
+                   'gev_p99_stats': gev_p99_stats
+                   }
+        self.data.metadata['results'] = results
+
+
+class SpatialGaussian(SpatialEstimator):
+    def compute_uncertainty(self):
+
+        """
+        Calculate the variance of the provided data array in parts.
+        """
+
+        data_strip = self.pre_process()
+        interpolation_cell_distance = data_strip.shape[1]
+        multiple = self.data.metadata['current_multiple']
+        win_len = 0
+
+
+        num_lines, num_samples = data_strip.shape
+        interpolation_cell_distance = ((interpolation_cell_distance - 2) // multiple) + 2
+        shape = (num_lines, interpolation_cell_distance)
+        difference_stat = np.full((num_lines, interpolation_cell_distance), 0.0)
+
+        # containers
+        gaussian_mean = np.zeros(shape)
+        gaussian_p95_stats = np.zeros(shape)
+        gaussian_p99_stats = np.zeros(shape)
+
+
+        for win_len in range(self.min_window, interpolation_cell_distance // 2 + 1):
+            num_convolutions = num_samples - win_len + 1
+            differences = np.full((num_lines, num_convolutions), 0.0)
+            for step in range(num_convolutions):
+                mins = np.min(data_strip[:, step:step + win_len], axis=-1)
+                maxs = np.max(data_strip[:, step:step + win_len], axis=-1)
+                stds = np.std(data_strip[:, step:step + win_len], axis=-1)
+                differences[:, step] = maxs - mins
+
+                gaussian_mean[:, win_len - 1] = np.mean(differences, axis=-1)
+                gaussian_p95_stats[:, win_len - 1] = np.percentile(differences, 95, axis=-1)
+                gaussian_p99_stats[:, win_len - 1] = np.percentile(differences, 99, axis=-1)
+
+        gaussian_mean[:, -win_len:] = np.fliplr(gaussian_mean[:, :win_len])
+        gaussian_p95_stats[:, -win_len:] = np.fliplr(gaussian_p95_stats[:, :win_len])
+        gaussian_p99_stats[:, -win_len:] = np.fliplr(gaussian_p99_stats[:, :win_len])
+        results = {'gaussian_mean': gaussian_mean,
+                   'gaussian_p95_stats': gaussian_p95_stats,
+                   'gaussian_p99_stats': gaussian_p99_stats
+                   }
+        self.data.metadata['results'] = results
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 #
 # def get_difference_uncertainties(data:np.ndarray,
