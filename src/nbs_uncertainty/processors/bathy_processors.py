@@ -1,5 +1,4 @@
-from ..readers.bathymetry import (Bathymetry,
-                                  RasterBathymetry,
+from ..readers.bathymetry import (RasterBathymetry,
                                   BPSBathymetry,
                                   CSVBathymetry)
 
@@ -40,14 +39,26 @@ class BathyProcessor:
         if handler is None:
             print( cls._method_dicts.keys())
             raise ValueError(f"{method_name} Processor not found for type {type(bathy_data)}")
-        return handler(bathy_data, *args, **kwargs)
+        output = handler(bathy_data, *args, **kwargs)
+        new_bathy = deepcopy(bathy_data)
+        new_bathy.data = output
+        if 'param' in kwargs.keys():
+            settings = kwargs['param']
+            new_bathy.metadata.update(settings)
+        return new_bathy
 
     @classmethod
-    def compute_residual(cls, bathy_data: RasterBathymetry, param: Dict | None):
-        residual = cls.estimate_surface(method_name='residual', 
+    def compute_residual(cls, bathy_data: RasterBathymetry, *args, **kwargs):
+        residual = cls.estimate_surface('residual',
+                                        bathy_data,
+                                        *args, **kwargs)
+        return residual
+
+    @classmethod
+    def estimate_uncertainty(cls, method_name: str,
+                             bathy_data: RasterBathymetry, *args, **kwargs):
+        uncertainty = cls.estimate_surface(method_name=method_name,
                                         bathy_data=bathy_data,
-                                        param=param)
-        new_bathy = deepcopy(bathy_data)
-        new_bathy.data = residual
-        return new_bathy
+                                        *args, **kwargs)
+        return uncertainty
 

@@ -266,8 +266,8 @@ def compute_residual(bathy_data: Bathymetry, params: Dict | None) -> np.ndarray:
 
     Returns
     -------
-    residual : np.array
-               Difference of the interpolation from the input data strip
+    residual : Bathymetry
+               Bathymetry object containing residual in the "data"
 
     """
 
