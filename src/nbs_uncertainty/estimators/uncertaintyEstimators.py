@@ -10,60 +10,45 @@ from ..estimators.spatialEstimators import SpatialStd, SpatialDiff, SpatialGEV, 
 @BathyProcessor.register("residual", RasterBathymetry)
 def compute_raster_residual(bathy_data: RasterBathymetry, *args, **kwargs):
     param = kwargs.get("param", {})
+    if len(param) == 0:
+        print("Warning: No parameters provided.")
     return helper.compute_residual(bathy_data, param)
 
 @BathyProcessor.register("amp_v1", RasterBathymetry)
 def glen_amplitude(bathy_data: RasterBathymetry, *args, **kwargs):
-    param = kwargs.get("param", {})
     return AmpV1(
-        data=bathy_data,
-        multiple=param.get("multiple", 1),
-        resolution=param.get("resolution", 1),
-        windowing=param.get("windowing", "hann"),
+        bathy_data=bathy_data,
         method="amplitude").compute_uncertainty()
 
 @BathyProcessor.register("psd_v1", RasterBathymetry)
 def glen_psd(bathy_data: RasterBathymetry, *args, **kwargs):
     param = kwargs.get("param", {})
     return PSDV1(
-        data=bathy_data,
-        multiple=param.get("multiple", 1),
-        resolution=param.get("resolution", 1),
-        windowing=param.get("windowing", "hann"),
+        bathy_data=bathy_data,
         method="psd").compute_uncertainty()
-    
-    
+
 @BathyProcessor.register("amp_v2", RasterBathymetry)
 def elias_amplitude(bathy_data: RasterBathymetry, *args, **kwargs):
     param = kwargs.get("param", {})
     return EliasUncertainty(
-            data=bathy_data,
-            multiple=param.get("multiple", 1),
-            resolution=bathy_data.metadata.get('resolution', 1),
-            windowing=param.get("windowing", "hann"),
-            method=param.get("method", "amplitude"),
+            bathy_data=bathy_data,
+            method="amplitude",
         ).compute_uncertainty()
     
 @BathyProcessor.register("psd_v2", RasterBathymetry)
 def elias_psd(bathy_data: RasterBathymetry, *args, **kwargs):
     param = kwargs.get("param", {})
     return EliasUncertainty(
-            data=bathy_data,
-            multiple=param.get("multiple", 1),
-            resolution=bathy_data.metadata.get('resolution', 1),
-            windowing=param.get("windowing", "hann"),
-            method=param.get("method", "psd"),
+            bathy_data=bathy_data,
+            method="psd",
         ).compute_uncertainty()
 
 @BathyProcessor.register("psd_n", RasterBathymetry)
 def elias_psd_n(bathy_data: RasterBathymetry, *args, **kwargs):
     param = kwargs.get("param", {})
     return EliasUncertainty(
-            data=bathy_data,
-            multiple=param.get("multiple", 1),
-            resolution=bathy_data.metadata.get('resolution', 1),
-            windowing=param.get("windowing", "hann"),
-            method=param.get("method", "psd_n"),
+            bathy_data=bathy_data,
+            method="psd_n",
         ).compute_uncertainty()
     
     
@@ -71,33 +56,24 @@ def elias_psd_n(bathy_data: RasterBathymetry, *args, **kwargs):
 def elias_psd_lf(bathy_data: RasterBathymetry, *args, **kwargs):
     param = kwargs.get("param", {})
     return EliasUncertainty(
-            data=bathy_data,
-            multiple=param.get("multiple", 1),
-            resolution=bathy_data.metadata.get('resolution', 1),
-            windowing=param.get("windowing", "hann"),
-            method=param.get("method", "psd_lf"),
+            bathy_data=bathy_data,
+            method="psd_lf",
         ).compute_uncertainty()
 
 @BathyProcessor.register("psd_df", RasterBathymetry)
 def elias_psd_lf(bathy_data: RasterBathymetry, *args, **kwargs):
     param = kwargs.get("param", {})
     return EliasUncertainty(
-            data=bathy_data,
-            multiple=param.get("multiple", 1),
-            resolution=bathy_data.metadata.get('resolution', 1),
-            windowing=param.get("windowing", "hann"),
-            method=param.get("method", "psd_df"),
+            bathy_data=bathy_data,
+            method="psd_df",
         ).compute_uncertainty()
     
 @BathyProcessor.register("spectrum", RasterBathymetry)
 def elias_spectrum(bathy_data: RasterBathymetry, *args, **kwargs):
     param = kwargs.get("param", {})
     return EliasUncertainty(
-            data=bathy_data,
-            multiple=param.get("multiple", 1),
-            resolution=bathy_data.metadata.get('resolution', 1),
-            windowing=param.get("windowing", "hann"),
-            method=param.get("method", "spectrum"),
+            bathy_data=bathy_data,
+            method="spectrum",
         ).compute_uncertainty()
     
 

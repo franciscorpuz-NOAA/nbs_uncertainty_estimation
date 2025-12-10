@@ -1,4 +1,5 @@
 # from ..utils.helper import matrix2strip, strip2matrix
+from copy import deepcopy
 
 import numpy as np
 from scipy import signal
@@ -25,10 +26,7 @@ def create_spatial_signal(resolution: int, max_cell_number: int):
 
 @dataclass
 class SpectralV1:
-    data: RasterBathymetry
-    multiple: int
-    resolution: int
-    windowing: str
+    bathy_data: RasterBathymetry
     method: str
 
     column_indices: np.ndarray = None
@@ -36,22 +34,28 @@ class SpectralV1:
     depth_data_strip: np.ndarray = None
 
     def pre_process(self) -> np.ndarray:
-        depth_data = self.data.data
+        depth_data = self.bathy_data.data
+        resolution = self.bathy_data.metadata['resolution']
+        linespacing = self.bathy_data.metadata['linespacing']
+        max_multiple = self.bathy_data.metadata['max_multiple']
+        current_multiple = self.bathy_data.metadata['current_multiple']
+        windowing = self.bathy_data.metadata['windowing']
+
         self.column_indices = get_column_indices(array_len=depth_data.shape[1],
-                                            resolution=self.data.metadata['resolution'],
-                                            linespacing_meters=self.data.metadata['linespacing'],
-                                            max_multiple=self.data.metadata['max_multiple'])
+                                            resolution=resolution,
+                                            linespacing_meters=linespacing,
+                                            max_multiple=max_multiple)
 
         depth_data_strip = matrix2strip(depth_data,
                                         column_indices=self.column_indices,
-                                        multiple=self.data.metadata['current_multiple'])
+                                        multiple=current_multiple)
 
         if depth_data_strip.ndim < 2:
             depth_data_strip = depth_data_strip.reshape(1, -1)
 
         # create window
         self.segment_window = signal.windows.get_window(
-            window=self.windowing, Nx=depth_data_strip.shape[1], fftbins=False)
+            window=windowing, Nx=depth_data_strip.shape[1], fftbins=False)
 
         # preprocess_signal, could be modified later
         # data_mean = np.mean(data, axis=1)
@@ -61,7 +65,8 @@ class SpectralV1:
 
     def post_process(self, uncertainty_strip:np.ndarray) -> np.ndarray:
         # Remove edges when computing the original linespacing
-        linespacing_width = int((self.depth_data_strip.shape[1] - 2) / self.multiple)
+        current_multiple = self.bathy_data.metadata['current_multiple']
+        linespacing_width = int((self.depth_data_strip.shape[1] - 2) / current_multiple)
         # Include edges again for the output strip
         output = np.zeros(shape=(self.depth_data_strip.shape[0], linespacing_width + 2))
         num_cols = output.shape[1]
@@ -71,7 +76,7 @@ class SpectralV1:
         output[:, int(num_cols / 2):] = np.fliplr(selected_data)
 
         output = strip2matrix(data_strip=output,
-                     original_shape=self.data.data.shape,
+                     original_shape=self.bathy_data.data.shape,
                      column_indices=self.column_indices)
 
         return output
@@ -80,13 +85,16 @@ class SpectralV1:
         raise NotImplementedError
 
 
+
+
 class AmpV1(SpectralV1):
 
-    def compute_uncertainty(self) -> np.ndarray:
+    def compute_uncertainty(self) -> RasterBathymetry:
         preprocessed_signal = self.pre_process()
+        resolution = self.bathy_data.metadata['resolution']
         rfft_values = np.abs(np.fft.rfft(preprocessed_signal, axis=1))
         _, num_cols = rfft_values.shape
-        r_frequencies = np.fft.rfftfreq(preprocessed_signal.shape[1], d=self.resolution)
+        r_frequencies = np.fft.rfftfreq(preprocessed_signal.shape[1], d=resolution)
 
         scale_factor = np.sum(self.segment_window)
         if num_cols % 2 == 0:
@@ -100,23 +108,27 @@ class AmpV1(SpectralV1):
         energy_freqs = r_frequencies
 
         # compute contribution per frequency
-        spatial_signal = create_spatial_signal(self.resolution, preprocessed_signal.shape[1])
+        spatial_signal = create_spatial_signal(resolution, preprocessed_signal.shape[1])
         variance = energy @ spatial_signal
 
         window_uncertainty = variance
         output = self.post_process(window_uncertainty)
-        return output
+
+        new_bathy = deepcopy(self.bathy_data)
+        new_bathy.data = output
+        return new_bathy
 
 
 class PSDV1(SpectralV1):
 
-    def compute_uncertainty(self) -> np.ndarray:
+    def compute_uncertainty(self) -> RasterBathymetry:
         preprocessed_signal = self.pre_process()
+        resolution = self.bathy_data.metadata['resolution']
         rfft_values = np.abs(np.fft.rfft(preprocessed_signal, axis=1))
         _, num_cols = rfft_values.shape
-        r_frequencies = np.fft.rfftfreq(preprocessed_signal.shape[1], d=self.resolution)
+        r_frequencies = np.fft.rfftfreq(preprocessed_signal.shape[1], d=resolution)
 
-        scale_factor = np.sum(self.segment_window ** 2) / self.resolution
+        scale_factor = np.sum(self.segment_window ** 2) / resolution
         rfft_values = rfft_values ** 2
         if num_cols % 2 == 0:
             rfft_values[:, 1:-1] = rfft_values[:, 1:-1] * 2
@@ -129,7 +141,7 @@ class PSDV1(SpectralV1):
         energy_freqs = r_frequencies
 
         # compute contribution per frequency
-        spatial_signal = create_spatial_signal(self.resolution, preprocessed_signal.shape[1])
+        spatial_signal = create_spatial_signal(resolution, preprocessed_signal.shape[1])
         variance = energy @ spatial_signal
 
         # normalize energy (convert m^2 to meters)
@@ -137,7 +149,9 @@ class PSDV1(SpectralV1):
         window_uncertainty = np.sqrt(variance)
         output = self.post_process(window_uncertainty)
 
-        return output
+        new_bathy = deepcopy(self.bathy_data)
+        new_bathy.data = output
+        return new_bathy
 
 
 class EliasUncertainty(SpectralV1):
@@ -261,17 +275,17 @@ class EliasUncertainty(SpectralV1):
         return energy, r_frequencies
 
 
-    def compute_uncertainty(self) -> np.ndarray:
+    def compute_uncertainty(self) -> RasterBathymetry:
         preprocessed_signal = self.pre_process()
         energy, energy_freqs = self.compute_energy_elias(preprocessed_signal,
-                                                    self.data.metadata['resolution'],
+                                                    self.bathy_data.metadata['resolution'],
                                                     self.method,
                                                     self.segment_window)
 
-        df = 1.0 / (preprocessed_signal.shape[1] * self.data.metadata['resolution'])
+        df = 1.0 / (preprocessed_signal.shape[1] * self.bathy_data.metadata['resolution'])
 
         # compute contribution per frequency
-        spatial_signal = create_spatial_signal(self.data.metadata['resolution'], preprocessed_signal.shape[1])
+        spatial_signal = create_spatial_signal(self.bathy_data.metadata['resolution'], preprocessed_signal.shape[1])
 
         variance = None
         if self.method == "amplitude":
@@ -299,7 +313,9 @@ class EliasUncertainty(SpectralV1):
         window_uncertainty = np.sqrt(variance)
         output = self.post_process(window_uncertainty)
 
-        return output
+        new_bathy = deepcopy(self.bathy_data)
+        new_bathy.data = output
+        return new_bathy
 
 #
 # def compute_fft_uncertainty_elias(

@@ -1,3 +1,5 @@
+from copy import deepcopy
+
 import numpy as np
 from ..utils.helper import matrix2strip, strip2matrix
 from typing import Callable
@@ -140,9 +142,14 @@ class SpatialStd(SpatialEstimator):
                    'std_envelope1': std_envelope1,
                    'std_envelope2': std_envelope2,
                    'std_envelope3': std_envelope3}
-        self.bathy_data.metadata['results'] = results
+
+        for key in results.keys():
+            results[key] = self.post_process(results[key])
+
+        new_bathy = deepcopy(self.bathy_data)
+        new_bathy.metadata['results'] = results
         
-        return self.bathy_data
+        return new_bathy
 
 
 class SpatialDiff(SpatialEstimator):
@@ -202,11 +209,16 @@ class SpatialDiff(SpatialEstimator):
                    'difference_envelope2': diff_envelope2,
                    'diff_envelope3': diff_envelope3,
                    }
-        self.bathy_data.metadata['results'] = results
-        return self.bathy_data
+
+        for key in results.keys():
+            results[key] = self.post_process(results[key])
+
+        new_bathy = deepcopy(self.bathy_data)
+        new_bathy.metadata['results'] = results
+
+        return new_bathy
 
 class SpatialGEV(SpatialEstimator):
-
 
     def compute_uncertainty(self):
 
@@ -249,12 +261,19 @@ class SpatialGEV(SpatialEstimator):
         gev_mean[:, -win_len:] = np.fliplr(gev_mean[:, :win_len])
         gev_p95_stats[:, -win_len:] = np.fliplr(gev_p95_stats[:, :win_len])
         gev_p99_stats[:, -win_len:] = np.fliplr(gev_p99_stats[:, :win_len])
+
         results = {'gev_mean': gev_mean,
                    'gev_p95_stats': gev_p95_stats,
                    'gev_p99_stats': gev_p99_stats
                    }
-        self.bathy_data.metadata['results'] = results
-        return self.bathy_data
+
+        for key in results.keys():
+            results[key] = self.post_process(results[key])
+
+        new_bathy = deepcopy(self.bathy_data)
+        new_bathy.metadata['results'] = results
+
+        return new_bathy
 
 class SpatialGaussian(SpatialEstimator):
     def compute_uncertainty(self):
@@ -300,8 +319,13 @@ class SpatialGaussian(SpatialEstimator):
                    'gaussian_p95_stats': gaussian_p95_stats,
                    'gaussian_p99_stats': gaussian_p99_stats
                    }
-        self.bathy_data.metadata['results'] = results
-        return self.bathy_data
+        for key in results.keys():
+            results[key] = self.post_process(results[key])
+
+        new_bathy = deepcopy(self.bathy_data)
+        new_bathy.metadata['results'] = results
+
+        return new_bathy
 
 
 

@@ -1,4 +1,6 @@
 import configparser
+from copy import deepcopy
+
 import numpy as np
 from numpy.lib.stride_tricks import sliding_window_view
 from ..readers.bathymetry import Bathymetry
@@ -247,7 +249,7 @@ def upsample(subsampled_data:np.ndarray, column_indices: list[int], method: str)
         raise ValueError(f"Unknown method: {method}")
 
 
-def compute_residual(bathy_data: Bathymetry, params: Dict | None) -> np.ndarray:
+def compute_residual(bathy_data: Bathymetry, params: Dict | None) -> Bathymetry:
     """
     Compute the residual error from estimating the data using
     linear interpolation
@@ -295,7 +297,10 @@ def compute_residual(bathy_data: Bathymetry, params: Dict | None) -> np.ndarray:
                              original_shape=depth_data.shape,
                              column_indices=column_indices)
 
-    return residual
+    new_bathy = deepcopy(bathy_data)
+    new_bathy.data = residual
+
+    return new_bathy
 
 def uncertainty_comparison(residuals, uncertainties):
     nonzero_idx = np.nonzero(

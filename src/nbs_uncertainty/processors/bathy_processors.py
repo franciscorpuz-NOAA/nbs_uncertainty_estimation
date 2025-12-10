@@ -41,28 +41,26 @@ class BathyProcessor:
             print( cls._method_dicts.keys())
             raise ValueError(f"{method_name} Processor not found for type {type(bathy_data)}")
         output = handler(bathy_data, *args, **kwargs)
-        new_bathy = deepcopy(bathy_data)
-        if type(output) is np.ndarray:
-            new_bathy.data = output
-        else:
-            new_bathy = deepcopy(output)
+        # new_bathy = deepcopy(bathy_data)
+        # if type(output) is np.ndarray:
+        #     new_bathy.data = output
+        # else:
+        #     new_bathy = deepcopy(output)
         if 'param' in kwargs.keys():
             settings = kwargs['param']
-            new_bathy.metadata.update(settings)
-        return new_bathy
+            output.metadata.update(settings)
+        return output
 
     @classmethod
     def compute_residual(cls, bathy_data: RasterBathymetry, *args, **kwargs):
-        residual = cls.estimate_surface('residual',
+        return cls.estimate_surface('residual',
                                         bathy_data,
                                         *args, **kwargs)
-        return residual
 
     @classmethod
     def estimate_uncertainty(cls, method_name: str,
                              bathy_data: RasterBathymetry, *args, **kwargs):
-        uncertainty = cls.estimate_surface(method_name=method_name,
+        return cls.estimate_surface(method_name=method_name,
                                         bathy_data=bathy_data,
                                         *args, **kwargs)
-        return uncertainty
 
