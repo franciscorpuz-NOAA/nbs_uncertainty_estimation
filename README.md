@@ -19,8 +19,8 @@ To install this package run:
 Check 'exploratory_analysis' Jupyter Notebook for basic usage
 
 ```python
->> > from nbs_uncertainty.readers.bathyreader import FileReaderSelector
->> > from nbs_uncertainty.estimators.estimatorSelector import EstimatorSelector
+>> > from nbs_uncertainty.readers.bathymetryFileReaders import FileReaderSelector
+>> > from nbs_uncertainty.ignore.surfaceEstimators import EstimatorSelector
 
 >> > file_reader = FileReaderSelector.select_reader(full_path)
 >> > bathy_data = file_reader.read_file(full_path)
