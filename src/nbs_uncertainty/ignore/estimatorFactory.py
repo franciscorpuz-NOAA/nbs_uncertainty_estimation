@@ -1,9 +1,9 @@
 from nbs_uncertainty.ignore.estimatorRegister import BathyProcessor
-from nbs_uncertainty.processors.rasterSpatialProcessors import (RasterSpatialDiff,
-                                                                RasterSpatialGaussian,
-                                                                RasterSpatialGEV,
-                                                                RasterSpatialStd)
-from nbs_uncertainty.processors.rasterSpectralProcessors import (EliasUncertainty)
+from nbs_uncertainty.methods.rasterSpatialMethods import (RasterSpatialDiff,
+                                                          RasterSpatialGaussian,
+                                                          RasterSpatialGEV,
+                                                          RasterSpatialStd)
+from nbs_uncertainty.methods.rasterSpectralMethods import (EliasUncertainty)
 # from ..ignore.spatialEstimators import get_difference_uncertainties
 # from ..ignore.spectralEstimators import compute_fft_uncertainty, compute_fft_uncertainty_elias
 

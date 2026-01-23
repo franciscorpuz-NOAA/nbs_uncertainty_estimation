@@ -1,17 +1,22 @@
-from nbs_uncertainty.processors.rasterProcessor import RasterProcessorClass
+from nbs_uncertainty.methods.rasterMethods import RasterMethods
 import numpy as np
 from scipy.stats import genextreme
 from numpy.lib.stride_tricks import sliding_window_view
+from nbs_uncertainty.readers.bathymetryDataset import RasterDataset
 
-class RasterSpatialProcessor(RasterProcessorClass):
+class RasterSpatialProcessor(RasterMethods):
     """
     Class implementation for Spatial Methods of estimating Uncertainty
     """
 
-    def __init__(self, method: str, min_window: int = 2, **kwargs):
+    def __init__(self, data_strip: RasterDataset,
+                 method: str,
+                 current_multiple: int,
+                 min_window: int = 2, **kwargs):
         self.min_window = min_window
-        super().__init__(**kwargs)
-        self.num_rows, self.num_cols = self.as_strip.shape
+        self.data_strip = data_strip
+        self.current_multiple = current_multiple
+        self.num_rows, self.num_cols = data_strip.shape
         self.interpolation_cell_distance = ((self.num_cols - 2) // self.current_multiple) + 2
         self.shape = (self.num_rows, self.interpolation_cell_distance)
         self.operator = method
@@ -28,7 +33,7 @@ class RasterSpatialProcessor(RasterProcessorClass):
 
 
         for win_len in range(self.min_window, self.interpolation_cell_distance // 2 + 1):
-            windows = sliding_window_view(self.as_strip, window_shape=win_len, axis=-1)
+            windows = sliding_window_view(self.data_strip, window_shape=win_len, axis=-1)
             mins.append(np.min(windows, axis=-1))
             maxs.append(np.max(windows, axis=-1))
             stds.append(np.std(windows, axis=-1))
@@ -36,7 +41,7 @@ class RasterSpatialProcessor(RasterProcessorClass):
         payload = {"mins": mins,
                    "maxs": maxs,
                    "stds": stds}
-        results = {}
+        # results = {}
 
         if self.operator == 'spatial_std':
             results = computeSpatialStd(payload)
@@ -46,10 +51,6 @@ class RasterSpatialProcessor(RasterProcessorClass):
             results = computeSpatialGaussian(payload)
         else:
             raise ValueError(f"Unexpected spatial operator: {self.operator}")
-
-        # Create mirror image / flip lengthwise
-        for key in results.keys():
-            results[key] = self.post_process(results[key])
 
         return results
 
@@ -163,9 +164,9 @@ class RasterSpatialStd(RasterSpatialProcessor):
             maxs = np.full((self.num_rows, num_convolutions), 0.0)
             stds = np.full((self.num_rows, num_convolutions), 0.0)
             for step in range(num_convolutions):
-                mins[:, step] = np.min(self.as_strip[:, step:step + win_len], axis=-1)
-                maxs[:, step] = np.max(self.as_strip[:, step:step + win_len], axis=-1)
-                stds[:, step] = np.std(self.as_strip[:, step:step + win_len], axis=-1)
+                mins[:, step] = np.min(self.data_strip[:, step:step + win_len], axis=-1)
+                maxs[:, step] = np.max(self.data_strip[:, step:step + win_len], axis=-1)
+                stds[:, step] = np.std(self.data_strip[:, step:step + win_len], axis=-1)
                 # differences = maxs - mins
 
             std_mean[:, win_len - 1] = np.mean(stds , axis=-1)
@@ -175,11 +176,6 @@ class RasterSpatialStd(RasterSpatialProcessor):
             std_envelope2[:, win_len - 1] = std_mean[:, win_len - 1] + 2 * std_std
             std_envelope3[:, win_len - 1] = std_mean[:, win_len - 1] + 3 * std_std
 
-            # std_mean[:, -win_len:] = np.fliplr(std_mean[:, :win_len])
-            # std_max[:, -win_len:] = np.fliplr(std_max[:, :win_len])
-            # std_envelope1[:, -win_len:] = np.fliplr(std_envelope1[:, :win_len])
-            # std_envelope2[:, -win_len:] = np.fliplr(std_envelope2[:, :win_len])
-            # std_envelope3[:, -win_len:] = np.fliplr(std_envelope3[:, :win_len])
 
         results = {'std_mean': std_mean,
                    'std_max': std_max,
@@ -187,8 +183,8 @@ class RasterSpatialStd(RasterSpatialProcessor):
                    'std_envelope2': std_envelope2,
                    'std_envelope3': std_envelope3}
 
-        for key in results.keys():
-            results[key] = self.post_process(results[key])
+        # for key in results.keys():
+        #     results[key] = self.post_process(results[key])
 
         return results
 
@@ -214,8 +210,8 @@ class RasterSpatialDiff(RasterSpatialProcessor):
             mins = np.full((self.num_rows, num_convolutions), 0.0)
             maxs = np.full((self.num_rows, num_convolutions), 0.0)
             for step in range(num_convolutions):
-                mins[:, step] = np.min(self.as_strip[:, step:step + win_len], axis=-1)
-                maxs[:, step] = np.max(self.as_strip[:, step:step + win_len], axis=-1)
+                mins[:, step] = np.min(self.data_strip[:, step:step + win_len], axis=-1)
+                maxs[:, step] = np.max(self.data_strip[:, step:step + win_len], axis=-1)
                 differences[:, step] = maxs[:, step] - mins[:, step]
 
             diff_mean = np.mean(differences, axis=-1)
@@ -227,11 +223,6 @@ class RasterSpatialDiff(RasterSpatialProcessor):
             diff_envelope2[:, win_len - 1] = diff_mean + 2 * diff_std
             diff_envelope3[:, win_len - 1] = diff_mean + 3 * diff_std
 
-        # difference_mean[:, -win_len:] = np.fliplr(difference_mean[:, :win_len])
-        # difference_max[:, -win_len:] = np.fliplr(difference_max[:, :win_len])
-        # diff_envelope1[:, -win_len:] = np.fliplr(diff_envelope1[:, :win_len])
-        # diff_envelope2[:, -win_len:] = np.fliplr(diff_envelope2[:, :win_len])
-        # diff_envelope3[:, -win_len:] = np.fliplr(diff_envelope3[:, :win_len])
         results = {'difference_mean': difference_mean,
                    'difference_max': difference_max,
                    'difference_envelope1': diff_envelope1,
@@ -239,8 +230,8 @@ class RasterSpatialDiff(RasterSpatialProcessor):
                    'difference_envelope3': diff_envelope3,
                    }
 
-        for key in results.keys():
-            results[key] = self.post_process(results[key])
+        # for key in results.keys():
+        #     results[key] = self.post_process(results[key])
 
         return results
 
@@ -263,8 +254,8 @@ class RasterSpatialGEV(RasterSpatialProcessor):
             num_convolutions = self.num_cols - win_len + 1
             differences = np.full((self.num_rows, num_convolutions), 0.0)
             for step in range(num_convolutions):
-                mins = np.min(self.as_strip[:, step:step + win_len], axis=-1)
-                maxs = np.max(self.as_strip[:, step:step + win_len], axis=-1)
+                mins = np.min(self.data_strip[:, step:step + win_len], axis=-1)
+                maxs = np.max(self.data_strip[:, step:step + win_len], axis=-1)
                 differences[:, step] = maxs - mins
 
                 for i in range(self.num_rows):
@@ -273,20 +264,11 @@ class RasterSpatialGEV(RasterSpatialProcessor):
                     gev_p95_stats[i, win_len - 1] = genextreme.ppf(0.95, shape_, loc_, scale_)
                     gev_p99_stats[i, win_len - 1] = genextreme.ppf(0.99, shape_, loc_, scale_)
 
-        # gev_mean[:, -win_len:] = np.fliplr(gev_mean[:, :win_len])
-        # gev_p95_stats[:, -win_len:] = np.fliplr(gev_p95_stats[:, :win_len])
-        # gev_p99_stats[:, -win_len:] = np.fliplr(gev_p99_stats[:, :win_len])
 
         results = {'gev_mean': gev_mean,
                    'gev_p95_stats': gev_p95_stats,
                    'gev_p99_stats': gev_p99_stats
                    }
-
-        for key in results.keys():
-            results[key] = self.post_process(results[key])
-
-        # new_bathy = deepcopy(self.bathy_file)
-        # new_bathy.metadata['results'] = results
 
         return results
 
@@ -312,27 +294,19 @@ class RasterSpatialGaussian(RasterSpatialProcessor):
             num_convolutions = self.num_cols - win_len + 1
             differences = np.full((self.num_rows, num_convolutions), 0.0)
             for step in range(num_convolutions):
-                mins = np.min(self.as_strip[:, step:step + win_len], axis=-1)
-                maxs = np.max(self.as_strip[:, step:step + win_len], axis=-1)
-                # stds = np.std(self.as_strip[:, step:step + win_len], axis=-1)
+                mins = np.min(self.data_strip[:, step:step + win_len], axis=-1)
+                maxs = np.max(self.data_strip[:, step:step + win_len], axis=-1)
+                # stds = np.std(self.data_strip[:, step:step + win_len], axis=-1)
                 differences[:, step] = maxs - mins
 
                 gaussian_mean[:, win_len - 1] = np.mean(differences, axis=-1)
                 gaussian_p95_stats[:, win_len - 1] = np.percentile(differences, 95, axis=-1)
                 gaussian_p99_stats[:, win_len - 1] = np.percentile(differences, 99, axis=-1)
 
-        # gaussian_mean[:, -win_len:] = np.fliplr(gaussian_mean[:, :win_len])
-        # gaussian_p95_stats[:, -win_len:] = np.fliplr(gaussian_p95_stats[:, :win_len])
-        # gaussian_p99_stats[:, -win_len:] = np.fliplr(gaussian_p99_stats[:, :win_len])
 
         results = {'gaussian_mean': gaussian_mean,
                    'gaussian_p95': gaussian_p95_stats,
                    'gaussian_p99': gaussian_p99_stats
                    }
-        for key in results.keys():
-            results[key] = self.post_process(results[key])
-
-        # new_bathy = deepcopy(self.bathy_file)
-        # new_bathy.metadata['results'] = results
 
         return results

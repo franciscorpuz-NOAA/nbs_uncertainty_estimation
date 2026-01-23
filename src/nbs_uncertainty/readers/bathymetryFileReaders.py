@@ -77,9 +77,9 @@ class RasterReader(BathymetryFileReader):
             else:
                 depth_data = raw_depth_data
 
-            return RasterDataset(filename=Path(filename).name,
-                                 data_type='raster',
-                                 depth_data=depth_data,
+            return RasterDataset(depth_data,
+                                 filename=Path(filename).name,
+                                 filetype='raster',
                                  metadata={'ndv_value': ndv_value,
                                                'resolution': resolution,
                                                'full_path': filename})

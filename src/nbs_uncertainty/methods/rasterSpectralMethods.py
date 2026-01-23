@@ -1,4 +1,5 @@
-from nbs_uncertainty.processors.rasterProcessor import RasterProcessorClass
+from nbs_uncertainty.methods.rasterMethods import RasterMethods
+from nbs_uncertainty.readers.bathymetryDataset import RasterDataset
 import numpy as np
 from scipy import signal
 
@@ -19,21 +20,20 @@ def create_spatial_signal(resolution: int, max_cell_number: int):
     return spatial_signal
 
 
-class RasterSpectralProcessor(RasterProcessorClass):
+class RasterSpectralProcessor(RasterMethods):
     """
     Class implementation for Spectral Methods of estimating Uncertainty
     """
 
-    def __init__(self, window_type: str = 'hann', **kwargs):
-        super().__init__(**kwargs)
-        self.window_vector = None
+    def __init__(self, data_strip: RasterDataset,
+                 window_type: str = 'hann', **kwargs):
         self.window_type = window_type
-        depth_as_strip = self.as_strip
+        self.data_strip = data_strip
         self.window_vector = signal.windows.get_window(window=self.window_type,
-                                                       Nx=depth_as_strip.shape[1],
+                                                       Nx=self.data_strip.shape[1],
                                                        fftbins=False)
-        self.windowed_input = self.as_strip * self.window_vector
-        res = self.bathydataset.metadata['resolution']
+        self.windowed_input = self.data_strip * self.window_vector
+        res = self.data_strip.metadata['resolution']
         self.rfft_values = np.abs(np.fft.rfft(self.windowed_input, axis=1))
         _, self.rfft_cols = self.rfft_values.shape
         self.rfft_frequencies = np.fft.rfftfreq(self.windowed_input.shape[1], d=res)
@@ -55,24 +55,23 @@ class GlenAmplitude(RasterSpectralProcessor):
         energy = self.rfft_values / np.sum(scale_factor)
 
         # compute contribution per frequency
-        spatial_signal = create_spatial_signal(self.bathydataset.metadata["resolution"],
+        spatial_signal = create_spatial_signal(self.data_strip.metadata["resolution"],
                                                self.windowed_input.shape[1])
         uncertainty = energy @ spatial_signal
-        uncertainty = self.post_process(uncertainty)
         return uncertainty
 
-    @property
-    def uncertainty_surface(self):
-        uncertainty = self.estimate_uncertainty()
-        return self.strip2matrix(uncertainty,
-                                 self.bathydataset.depth_data.shape,
-                                 self.column_indices)
+    # @property
+    # def uncertainty_surface(self):
+    #     uncertainty = self.estimate_uncertainty()
+    #     return self.strip2matrix(uncertainty,
+    #                              self.bathydataset.depth_data.shape,
+    #                              self.column_indices)
 
 
 class GlenPSD(RasterSpectralProcessor):
 
     def estimate_uncertainty(self):
-        scale_factor = np.sum(self.window_vector ** 2) / self.bathydataset.metadata['resolution']
+        # scale_factor = np.sum(self.window_vector ** 2) / self.bathydataset.metadata['resolution']
         self.rfft_values = self.rfft_values ** 2
         if self.rfft_cols % 2 == 0:
             self.rfft_values[:, 1:-1] = self.rfft_values[:, 1:-1] * 2
@@ -85,28 +84,15 @@ class GlenPSD(RasterSpectralProcessor):
         energy_freqs = self.rfft_frequencies
 
         # compute contribution per frequency
-        spatial_signal = create_spatial_signal(self.bathydataset.metadata["resolution"],
+        spatial_signal = create_spatial_signal(self.data_strip.metadata["resolution"],
                                                self.windowed_input.shape[1])
-        try:
-            variance = energy @ spatial_signal
-        except:
-            print(f"energy shape: {energy.shape}")
-            print(f"spatial_signal shape: {spatial_signal.shape}")
+        variance = energy @ spatial_signal
 
         # normalize energy (convert m^2 to meters)
         variance = variance / len(energy_freqs)
         uncertainty = np.sqrt(variance)
-        uncertainty = self.post_process(uncertainty)
+
         return uncertainty
-
-    @property
-    def uncertainty_surface(self):
-        uncertainty = self.estimate_uncertainty()
-        return self.strip2matrix(uncertainty,
-                                 self.bathydataset.depth_data.shape,
-                                 self.column_indices)
-
-
 
 def compute_energy_elias(data: np.ndarray,
                          resolution: int,
@@ -239,7 +225,7 @@ class EliasUncertainty(RasterSpectralProcessor):
 
     def estimate_uncertainty(self):
         preprocessed_signal = self.windowed_input
-        res = self.bathydataset.metadata['resolution']
+        res = self.data_strip.metadata['resolution']
         self.energy, self.energy_freqs = compute_energy_elias(preprocessed_signal,
                                                             res,
                                                             self.method,
@@ -269,5 +255,5 @@ class EliasUncertainty(RasterSpectralProcessor):
         if variance is None:
             raise ValueError('Variance values is None')
         uncertainty = np.sqrt(variance)
-        uncertainty = self.post_process(uncertainty)
+
         return uncertainty
