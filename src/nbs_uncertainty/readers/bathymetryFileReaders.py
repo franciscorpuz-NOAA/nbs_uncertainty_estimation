@@ -1,8 +1,9 @@
 from abc import ABC, abstractmethod
 from pathlib import Path
 import numpy as np
-from nbs_uncertainty.readers.bathymetryDataset import (BathymetryDataset,
-                                                       RasterDataset)
+from nbs_uncertainty.readers.bathymetryDataset import (RasterDataset,
+                                                       CSVDataset,
+                                                       BPSDataset)
 
 from osgeo import gdal
 gdal.UseExceptions()
@@ -173,7 +174,7 @@ class CSVReader(BathymetryFileReader):
     Subclass for CSV file readers (future implementation)
     """
 
-    def read_file(self, filename: str | Path) -> BathymetryDataset:
+    def read_file(self, filename: str | Path) -> CSVDataset:
         """
         Parameters
         ----------
@@ -181,16 +182,16 @@ class CSVReader(BathymetryFileReader):
 
         Returns
         -------
-        BathymetryDataset
+        CSVDataset
         """
-        pass
+
 
 
 class BPSReader(BathymetryFileReader):
     """
     Subclass for BPS file readers (future implementation)
     """
-    def read_file(self, filename: str | Path) -> BathymetryDataset:
+    def read_file(self, filename: str | Path) -> BPSDataset:
         """
         Parameters
         ----------
@@ -198,7 +199,7 @@ class BPSReader(BathymetryFileReader):
 
         Returns
         -------
-        BathymetryDataset
+        BPSDataset
         """
         pass
 

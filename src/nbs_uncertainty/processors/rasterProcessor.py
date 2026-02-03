@@ -45,19 +45,12 @@ class RasterProcessor:
 
         """
         Determine indices of the columns to be used as simulated sampling lines
+        Indices are rounded to the nearest even integer for convenience
 
         Parameters:
         -------------
         array_len : int
                     Length of the array containing bathymetry depth
-        resolution : float
-                    Spatial Resolution of the bathymetry depth
-        linespacing_meters : int
-                            distance between 2 vertical sample lines (m)
-        max_multiple : int
-                        maximum multiple of the linespacing to be used
-                        as window size for FFT
-
 
         Returns:
         -----------
@@ -101,11 +94,9 @@ class RasterProcessor:
         )
 
         # actual sampling indices will be determined by the desired linespacing
-        col_indxs = np.arange(start_col,
-                              last_col,
-                              (linespacing_in_pixels + 1)).astype(int)
+        column_indices = np.arange(start_col, last_col, (linespacing_in_pixels + 1)).astype(int)
 
-        return col_indxs
+        return column_indices
 
     def matrix2strip(self, depth: RasterDataset) -> RasterDataset:
         """
@@ -114,27 +105,26 @@ class RasterProcessor:
 
         Parameters
         ----------
-        depth : np.ndarray
+        depth : rasterDataset
                 1d vector or 2d array of bathymetric values
-        column_indices : np.array
-                        column indices/location of the sampling lines
-        multiple : int
-                Multiple of the linespacing used to define the window size
 
         Returns
         --------
         strip : np.ndarray
-                a segment of the bathymetric depth for further FFT processing
+                bathymetric depth transformed into a single strip of
+                 width equal to the specified linespacing for
+                 further raster processing
 
 
         """
-        print(type(depth))
+
         column_indices = self.get_column_indices(depth)
+
         # if depth is a vector, convert to matrix
         if len(depth.shape) < 1:
-            depth = np.expand_dims(depth, axis=0)
-            depth = depth.view(RasterDataset)
-            depth.__dict__.update(depth.__dict__)
+            new_depth = depth.wrap(np.expand_dims(depth, axis=0))
+            depth = new_depth
+
         current_multiple = self.multiple
         start, end = column_indices[0], column_indices[1]
         linespacing = end - start - 1
@@ -159,9 +149,8 @@ class RasterProcessor:
         # reshape to 2d matrix
         strips = window_views.reshape(-1, window_size + 2)
 
-        # cast to rasterDataset
-        output = strips.view(RasterDataset)
-        output.__dict__.update(depth.__dict__)
+        # cast back to rasterDataset
+        output = depth.wrap(strips)
 
         return output
 
@@ -175,7 +164,7 @@ class RasterProcessor:
 
         Parameters
         ----------
-        data_strip : np.ndarray
+        data_strip : RasterDataset
                     processed depth in strip form
         column_indices : np.array
                          column indices/location of the sampling lines
@@ -189,7 +178,7 @@ class RasterProcessor:
         """
 
         # placeholder for reconstructed matrix
-        output = np.full((data_strip.orig_shape), np.nan)
+        output = np.full(data_strip.orig_shape, np.nan)
 
 
         # "Cut" the long strip into vertical segments with length (rows)
@@ -202,6 +191,10 @@ class RasterProcessor:
         # remove extra dimension and only retain views of the window size
         stride = num_rows
         segment_strips = window_views.squeeze()[::stride]
+
+        # print(f"num_rows, num_cols: {num_rows, num_cols}")
+        # print(f"segment strips shape: {segment_strips.shape}")
+        # print(f"segment strips: {segment_strips}")
 
         # Start with the first slice of the segment_strips
         strip_0 = segment_strips[0, :, :]
@@ -218,53 +211,82 @@ class RasterProcessor:
         unstripped = np.concatenate((strip_0, strip_rest), axis=1)
 
         # Place reconstructed array into proper columns
-        output[:, column_indices[0]:column_indices[-1] + 1] = unstripped
+        end_col = int(column_indices[0] + unstripped.shape[1])
+        output[:, column_indices[0]:end_col] = unstripped
+        # output[:, column_indices[0]:end_col + 1] = unstripped
+        # output[:, column_indices[0]:column_indices[-1] + 1] = unstripped
 
-        # Crop out np.nan pixels
+        # Crop out columns with np.nan pixels
         cols_with_nan = np.isnan(output).any(axis=0)
         output = output[:, ~cols_with_nan]
 
         # cast to rasterDataset
-        output = output.view(RasterDataset)
-        output.__dict__.update(data_strip.__dict__)
+        output = data_strip.wrap(output)
 
         return output
 
-    def compute_interpolation (self, rasterDataset: RasterDataset) -> RasterDataset:
-        interpolated_strip = np.linspace(start=rasterDataset[:, 0],
-                                         stop=rasterDataset[:, -1],
-                                         num=rasterDataset.shape[1]).T
+    def compute_interpolation(self, data: RasterDataset) -> RasterDataset:
+        interpolated_strip = np.linspace(start=data[:, 0],
+                                         stop=data[:, -1],
+                                         num=data.shape[1]).T
 
         # cast to RasterDataset
-        output = interpolated_strip.view(RasterDataset)
-        output.__dict__.update(rasterDataset.__dict__)
-
+        output = data.wrap(interpolated_strip)
         return output
 
-    def compute_interpolated_surface(self, rasterDataset: RasterDataset):
+    def compute_residual(self, bathy_data: RasterDataset, take_abs:bool = True) -> RasterDataset:
+        interpolation = self.compute_interpolation(bathy_data)
+        residual = bathy_data - interpolation
+        if take_abs:
+            residual = np.abs(residual)
+            residual = bathy_data.wrap(residual)
+        return residual
+
+
+    def compute_interpolated_surface(self, rasterDataset: RasterDataset) -> RasterDataset:
         column_indices = self.get_column_indices(rasterDataset)
+
+        # transform into strip of width equal to linespacing
         depthdata_as_strip = self.matrix2strip(rasterDataset)
+
+        # execute the interpolation
         interpolated_strip = self.compute_interpolation(depthdata_as_strip)
+
+        # transform back to original dimensions
         return self.strip2matrix(data_strip=interpolated_strip,
                                  column_indices=column_indices)
 
-    def compute_residual_surface(self, rasterDataset: RasterDataset) -> RasterDataset:
-        interpolated_surface = self.compute_interpolated_surface(rasterDataset)
+    def compute_residual_surface(self, bathy_data: RasterDataset) -> RasterDataset:
+        interpolated_surface = self.compute_interpolated_surface(bathy_data)
 
-        # number of columns may change due to subsampling
+        # number of columns may decrease due to subsampling in the interpolation
         new_cols = interpolated_surface.shape[1]
-        residual_surface = rasterDataset[:, :new_cols] - interpolated_surface
+
+        # residual is original bathy values minus the computed interpolation
+        # use only the number of columns present after the interpolation process
+        residual_surface = bathy_data[:, :new_cols] - interpolated_surface
+        residual_surface = bathy_data.wrap(residual_surface)
         return np.abs(residual_surface)
 
-    def compute_residual_strip(self, rasterDataset: RasterDataset) -> RasterDataset:
-        column_indices = self.get_column_indices(rasterDataset)
-        return np.abs(self.compute_interpolation(self.matrix2strip(depth= rasterDataset)))
 
     def post_process(self, uncertainty_strip:RasterDataset) -> RasterDataset:
-        # Remove edges when computing the original linespacing
+        """
+        Create mirror image of uncertainty_strip to regain original dimension of the strip
+        as output of spatial or spectral methods reduce the number of columns by half
+
+        Parameters
+        ----------
+        uncertainty_strip
+
+        Returns
+        -------
+        uncertainty_strip with double the width
+
+        """
+        # Compute original width
         linespacing_width = int((uncertainty_strip.shape[1] - 2) / self.multiple)
 
-        # Include edges again for the output strip
+        # Include a column of zeroes on each end for the output strip
         output = np.zeros(shape=(uncertainty_strip.shape[0], linespacing_width + 2))
         num_cols = output.shape[1]
 
@@ -273,36 +295,55 @@ class RasterProcessor:
         output[:, :int(num_cols / 2)] = selected_data
         output[:, int(num_cols / 2):] = np.fliplr(selected_data)
 
-        output = output.view(RasterDataset)
-        output.__dict__.update(uncertainty_strip.__dict__)
+        output = uncertainty_strip.wrap(output)
 
         return output
 
 
-    def estimate_surface(self, method: str, bathy_data: RasterDataset, **kwargs):
+    def estimate_uncertainty(self, method: str,
+                             residual_data: RasterDataset,
+                             is_strip:bool = False,
+                             **kwargs):
+        """ Pipeline for computing the uncertainty estimate from the residual"""
+
+        if is_strip:
+            residual_strip = residual_data
+        else:
+            residual_strip = self.matrix2strip(residual_data)
+
+        # Extract selected method and apply to residual
         estimation_method = raster_methods[method]
-        bathy_strip = self.compute_residual_strip(bathy_data)
-        output_strip = estimation_method(data_strip=bathy_strip,
+        output_strip = estimation_method(data_strip=residual_strip,
                                  linespacing_meters=self.linespacing_meters,
                                  current_multiple=self.multiple,
                                  max_multiple=self.max_multiple,
                                  **kwargs).estimate_uncertainty()
-        column_indices = self.get_column_indices(bathy_data)
+
+
+        column_indices = self.get_column_indices(residual_data)
+
         if method in spectral_methods:
-            # Cast to RasterDataset
-            output_strip = output_strip.view(RasterDataset)
-            output_strip.__dict__.update(bathy_data.__dict__)
+            # spectral methods just need to be mirrored
+            output_strip = residual_data.wrap(output_strip)
             output = self.post_process(output_strip)
-            return self.strip2matrix(data_strip=output, column_indices=column_indices)
+            if not is_strip:
+                return self.strip2matrix(data_strip=output, column_indices=column_indices)
+            else:
+                return output
+
         elif method in spatial_methods:
+            # output of spatial methods is a dictionary of various combinations
+            # (e.g, mean, std, envelope1, envelope2, etc)
+            # loop over objects in the dictionary for post processing
+
             for key in output_strip.keys():
                 current_output = output_strip[key]
-
-                # Cast to RasterDataset
-                current_output = current_output.view(RasterDataset)
-                current_output.__dict__.update(bathy_data.__dict__)
+                current_output = residual_data.wrap(current_output)
                 post_processed = self.post_process(current_output)
-                output_strip[key] = self.strip2matrix(data_strip=post_processed, column_indices=column_indices)
+                if not is_strip:
+                    output_strip[key] = self.strip2matrix(data_strip=post_processed, column_indices=column_indices)
+                else:
+                    output_strip[key] = post_processed
             return output_strip
         else:
             raise ValueError(f"Unexpected method: {method}")

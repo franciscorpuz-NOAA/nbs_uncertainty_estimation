@@ -44,16 +44,18 @@ class BathymetryDataset(np.ndarray):
         self.metadata = getattr(obj, 'metadata', {})
         self.orig_shape = getattr(obj, 'orig_shape', None)
 
-    def clone(self, **updated_meta):
-        """Creates a copy and allows selective metadata updates."""
-        # Create the copy (metadata is copied via __array_finalize__)
-        new_obj = self.copy()
+    def wrap(self, raw_data):
+        """
+        Create new RasterDataset with same metadata as the current object
+        """
+        # Cast the raw data to the current class
+        new_obj = np.asanyarray(raw_data).view(self.__class__)
 
-        # Pass metadata passed in kwargs
-        for key, value in updated_meta.items():
-            setattr(new_obj, key, value)
+        # 2. Sync the metadata dictionary
+        new_obj.__dict__.update(self.__dict__)
 
         return new_obj
+
 
     def __repr__(self):
         # Custom print to show bathymetry with associated metadata
@@ -107,6 +109,7 @@ class RasterDataset(BathymetryDataset):
     def ndv_value(self):
         """Returns no-data-value extracted from the raster metadata"""
         return self.metadata['ndv_value']
+
 
     def show_depth(self, title: str = None):
         """
@@ -165,3 +168,52 @@ class RasterDataset(BathymetryDataset):
                 f"\nndv_value: {self.ndv_value},"
                 f"\nfiletype='{self.filetype}, "
                 f"\nmetadata='{self.metadata}'")
+
+
+class CSVDataset(BathymetryDataset):
+    """
+    Subclass for Raster-type bathymetry with additional helper functions
+    """
+
+    def __new__(cls, depth_data, **kwargs):
+        # create BathymetryDataset datatype
+        obj = super().__new__(cls, depth_data, **kwargs)
+        return obj
+
+
+    def __array_finalize__(self, obj):
+        """
+        Preserve metadata during numpy operations
+        """
+        super().__array_finalize__(obj)
+        if obj is None: return
+        # Copy base metadata
+        self.filename = getattr(obj, 'filename', " ")
+        self.filetype = getattr(obj, 'filetype', "csv")
+        self.metadata = getattr(obj, 'metadata', {})
+        self.orig_shape = getattr(obj, 'orig_shape', None)
+
+
+class BPSDataset(BathymetryDataset):
+    """
+    Subclass for Raster-type bathymetry with additional helper functions
+    """
+
+    def __new__(cls, depth_data, **kwargs):
+        # create BathymetryDataset datatype
+        obj = super().__new__(cls, depth_data, **kwargs)
+        return obj
+
+
+    def __array_finalize__(self, obj):
+        """
+        Preserve metadata during numpy operations
+        """
+        super().__array_finalize__(obj)
+        if obj is None: return
+        # Copy base metadata
+        self.filename = getattr(obj, 'filename', " ")
+        self.filetype = getattr(obj, 'filetype', " bps")
+        self.metadata = getattr(obj, 'metadata', {})
+        self.orig_shape = getattr(obj, 'orig_shape', None)
+

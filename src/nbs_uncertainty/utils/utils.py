@@ -1,296 +1,209 @@
+from PIL.ImageChops import offset
+
+from nbs_uncertainty.readers.bathymetryDataset import RasterDataset
+from nbs_uncertainty.processors.rasterProcessor import RasterProcessor
+
 import numpy as np
 from numpy.lib.stride_tricks import sliding_window_view
+import matplotlib.cbook as cbook
 
 
-# def get_column_indices(
-#     array_len: int,
-#     resolution: int,
-#     linespacing_meters: int,
-#     max_multiple: int,
-# ) -> np.ndarray:
-#     """
-#     Determine indices of the columns to be used as sampling lines
-#
-#     Parameters:
-#     -------------
-#     array_len : int
-#                 Length of the array containing bathymetry depth
-#     resolution : float
-#                     Spatial Resolution of the bathymetry depth
-#     linespacing_meters : int
-#                             distance between 2 vertical sample lines (m)
-#     max_multiple : int
-#                     maximum multiple of the linespacing to be used
-#                     as window size for FFT
-#
-#
-#     Returns:
-#     -----------
-#     col_indxs : np.array
-#                 array indices corresponding to sample points/lines
-#                 :rtype: np.ndarray
-#
-#     """
-#
-#     # Round the desired linespacing to the nearest even integer
-#     # for computational convenience
-#     linespacing_in_pixels = np.round(linespacing_meters / resolution)
-#     if (linespacing_in_pixels % 2) != 0:
-#         linespacing_in_pixels = linespacing_in_pixels - 1
-#
-#     if array_len < linespacing_in_pixels:
-#         raise ValueError(
-#             f"""
-#             Desired linespacing should be less than the Spatial coverage.
-#             Entered Linespacing: {linespacing_meters}m
-#             Bathymetric coverage: {array_len * resolution}m"""
-#         )
-#
-#     # Valid sampling columns is determined by the window length
-#     # Window lengths are multiples of the linespacing
-#     window_size_pixels = linespacing_in_pixels * max_multiple
-#     start_col = int(
-#         (window_size_pixels // 2) -
-#         (linespacing_in_pixels // 2)
-#                     )
-#
-#     last_col = int(
-#         array_len
-#         - (window_size_pixels // 2)
-#         + (linespacing_in_pixels // 2)
-#         - 1
-#     )
-#
-#     # actual sampling indices will be determined by the desired linespacing
-#     col_indxs = np.arange(start_col,
-#                           last_col,
-#                           (linespacing_in_pixels + 1)).astype(int)
-#
-#     return col_indxs
-#
-# def matrix2strip(
-#     depth: np.ndarray,
-#     column_indices: np.ndarray,
-#     multiple: int,
-# ) -> np.ndarray:
-#     """
-#     Transform depth matrix into a continuous strip with
-#     width equal to the linespacing
-#
-#     Parameters
-#     ----------
-#     depth : np.ndarray
-#             1d vector or 2d array of bathymetric values
-#     column_indices : np.array
-#                     column indices/location of the sampling lines
-#     multiple : int
-#             Multiple of the linespacing used to define the window size
-#
-#     Returns
-#     --------
-#     strip : np.array
-#             a segment of the bathymetric depth for further FFT processing
-#
-#
-#     """
-#
-#     # if depth is a vector, convert to matrix
-#     if len(depth.shape) < 1:
-#         depth = np.expand_dims(depth, axis=0)
-#
-#     current_multiple = multiple
-#     start, end = column_indices[0], column_indices[1]
-#     linespacing = end - start - 1
-#     window_size = linespacing * current_multiple
-#     midpoint = start + (linespacing // 2) + 1
-#
-#     # Determine column boundaries for window segment
-#     # -1 / +1 will include sampling columns at the edges
-#     start_col = int(midpoint - (window_size // 2)) - 1
-#     end_col = int(column_indices[-1] + (window_size // 2) + 1)
-#
-#     # Get sliding window view of depth using window_size
-#     # +2 will compensate for the additional pixels on the edges
-#     window_views = sliding_window_view(depth[:, start_col:end_col],
-#                                        window_shape=(depth.shape[0],
-#                                                      window_size + 2))
-#
-#     # remove extra dimension and only retain views of the window size
-#     stride = linespacing + 1
-#     window_views = window_views.squeeze()[::stride]
-#
-#     # reshape to 2d matrix
-#     strips = window_views.reshape(-1, window_size + 2)
-#
-#     return strips
-#
-#
-# def strip2matrix(
-#     data_strip: np.ndarray,
-#     original_shape: tuple,
-#     column_indices: np.ndarray,
-# ) -> np.ndarray:
-#     """
-#     Reverses the matrix2strip function, reverts the strip back
-#     to the original dimensions of the bathymetric depth
-#
-#     Parameters
-#     ----------
-#     data_strip : np.ndarray
-#                 processed depth in strip form
-#     original_shape : np.array
-#                     original dimensions of the bathymetric depth
-#     column_indices : np.array
-#                      column indices/location of the sampling lines
-#
-#     Returns
-#     --------
-#     unstripped : np.array
-#                 values in their original spatial location
-#
-#
-#     """
-#
-#     # placeholder for reconstructed matrix
-#     output = np.zeros(shape=original_shape)
-#     output[:] = np.nan
-#
-#     # "Cut" the long strip into vertical segments with length (rows)
-#     # equal to the original depth matrix
-#     num_rows, num_cols = original_shape[0], data_strip.shape[1]
-#     window_views = sliding_window_view(data_strip,
-#                                        window_shape=(num_rows,
-#                                                      num_cols))
-#
-#     # remove extra dimension and only retain views of the window size
-#     stride = num_rows
-#     segment_strips = window_views.squeeze()[::stride]
-#
-#     # Start with the first slice of the segment_strips
-#     strip_0 = segment_strips[0, :, :]
-#
-#     # Remove the first column of the succeeding slides as as they overlap
-#     # with the last column of the previous slice
-#     strip_rest = segment_strips[1:, :, 1:]
-#
-#     # concatenate succeeding slices in the 2nd dimension
-#     strip_rest = np.transpose(strip_rest, (0, 2, 1))
-#     strip_rest = strip_rest.reshape(-1, strip_rest.shape[2]).T
-#
-#     # concatenate first slice with the rest of the segments
-#     unstripped = np.concatenate((strip_0, strip_rest), axis=1)
-#     # print(f"strip_0 shape: {strip_0.shape}")
-#     # print(f"strip_rest shape: {strip_rest.shape}")
-#     # print(f"target shape: {output[:, column_indices[0]:column_indices[-1]+1].shape}")
-#
-#     # Place reconstructed array into proper columns
-#     output[:, column_indices[0]:column_indices[-1]+1] = unstripped
-#
-#     return output
+def case_1_bp(bathy_data: RasterDataset,
+              processor:RasterProcessor,
+              method:str) -> cbook.boxplot_stats:
+    """
+    Compute boxplot of the difference between residuals and uncertainty_estimate
+    Case 1 is default, across-track, computing uncertainty estimate using same row
+    """
+
+    # Compute uncertainty_estimate from using parameters inside Rasterprocessor
+    residual_data = processor.compute_residual_surface(bathy_data)
+    uncertainty = processor.estimate_uncertainty(method=method, residual_data=residual_data)
+
+    # Make dimensions of residual and uncertainty the same
+    new_number_cols = uncertainty.shape[1]
+    residual = residual_data[:, :new_number_cols]
+
+    # Cast to numpy
+    residual = np.array(residual)
+    uncertainty = np.array(uncertainty)
+
+    case_1 = cbook.boxplot_stats(np.abs(residual.ravel()-uncertainty.ravel()), labels=['Case 1'])[0]
+    return case_1
 
 
-def transform_matrix(matrix_data, row_indices):
-    matrix_data_rows = matrix_data[row_indices[:-1], :]
-    n_times = int(row_indices[1] - row_indices[0])
-    matrix_data_tiles = np.repeat(matrix_data_rows, n_times, axis=0)
-    matrix_data[:row_indices[0], :] = np.nan
-    matrix_data[row_indices[-1]:, :] = np.nan
-    matrix_data[row_indices[0]:row_indices[-1], :] = matrix_data_tiles
-    return matrix_data
+def case_2_bp(bathy_data: RasterDataset,
+              processor:RasterProcessor,
+              method:str,
+              base_row:str = 'top') -> cbook.boxplot_stats:
+    """
+    Compute boxplot of the difference between residuals and uncertainty_estimate
+    Case 2 uses across-track data, simulates tiled uncertainty
 
+    """
+    linespacing_pixels = int(processor.linespacing_meters / bathy_data.metadata['resolution'])
 
-def subsample(data:np.ndarray, column_indices: np.ndarray, method: str):
-    # possible values: "along", "across", "along-tiled", "across-tiled"
-    if method == "across":
-        return data
-    elif method == "across-tiled":
-        # subsample rows every linespacing (defined by the column indices)
-        subsampled_data = data[column_indices[:-1], :]
-        return subsampled_data
-    elif method == "along":
-        transposed_data = data.transpose()
-        return transposed_data
-    elif method == "along-tiled":
-        transposed_data = data.transpose()
-        subsampled_transposed_data = transposed_data[column_indices[:-1], :]
-        return subsampled_transposed_data
+    # Compute residual using complete coverage, across track data
+    residual_data = processor.compute_residual_surface(bathy_data)
+
+    # Subsample resulting residual every n-th linespacing
+    if base_row == 'top':
+        # Use top row as base and retain every linespacing_row
+        row_subsampled_residual = residual_data[::linespacing_pixels, :]
+    elif base_row == 'middle':
+        # Use middle row as base and retain every linespacing_row
+        offset = linespacing_pixels // 2
+        row_subsampled_residual = residual_data[offset::linespacing_pixels, :]
     else:
-        raise ValueError(f"Unknown method: {method}")
+        raise ValueError(f"base_row must be 'top' or 'middle'. input:{base_row}")
+
+    # Expand subsampled residual and use it to compute for the uncertainty estimate
+    expanded_residual = np.repeat(row_subsampled_residual, linespacing_pixels, axis=0)
+    new_residual = expanded_residual[:residual_data.shape[0],:]
+
+    # Compute uncertainty from the expanded residual
+    uncertainty = processor.estimate_uncertainty(method=method, residual_data=new_residual)
+
+    # Make dimensions of original residual and computed uncertainty the same
+    new_number_cols = uncertainty.shape[1]
+    residual = residual_data[:, :new_number_cols]
+
+    # Cast to numpy
+    residual = np.array(residual)
+    uncertainty = np.array(uncertainty)
+
+    case_2 = cbook.boxplot_stats(np.abs(residual.ravel() - uncertainty.ravel()), labels=[f"Case 2 {base_row}"])[0]
+    return case_2
 
 
-def upsample(subsampled_data:np.ndarray, column_indices: list[int], method: str):
-    # possible values: "along", "across", "along-tiled", "across-tiled"
-    if method == "across":
-        return subsampled_data
-    elif method == "across-tiled":
-        # repeat rows every linespacing (defined by the column indices)
-        n_times = int(column_indices[1] - column_indices[0] + 1)
-        upsampled_data = np.repeat(subsampled_data, n_times, axis=0)
-        return upsampled_data
-    elif method == "along":
-        upsampled_data = subsampled_data.transpose()
-        return upsampled_data
-    elif method == "along-tiled":
-        n_times = int(column_indices[1] - column_indices[0])
-        repeated_subsampled_data = np.repeat(subsampled_data, n_times, axis=0)
-        upsampled_data = repeated_subsampled_data.transpose()
-        return upsampled_data
+def case_3_bp(bathy_data: RasterDataset,
+              processor:RasterProcessor,
+              method:str,
+              selected_column:str = 'left') -> cbook.boxplot_stats:
+    """ Case 3 uses the along track data to estimate the
+    across track uncertainty from the complete coverage data
+    """
+
+    # Compute normal residual using complete coverage, across track data
+    residual_data = processor.compute_residual_surface(bathy_data)
+    residual_data_as_strip = processor.matrix2strip(residual_data)
+
+
+    # Crop original complete coverage data using only rows used in computing the residual
+    bathy_data_cropped = bathy_data[:, :residual_data.shape[1]]
+
+    # Update the "original size" metadata to reflect new size
+    bathy_data_cropped.orig_shape = bathy_data_cropped.shape
+
+    # Reshape original complete coverage data and extract data from preferred column
+    bathy_data_strip = processor.matrix2strip(bathy_data_cropped)
+    if selected_column == 'left':
+        bathy_column = bathy_data_strip[:, 0]
+    elif selected_column == 'right':
+        bathy_column = bathy_data_strip[:, -1]
     else:
-        raise ValueError(f"Unknown method: {method}")
+        raise ValueError(f"base_column must be 'left' or 'right'. input:{selected_column}")
+
+    #
+    # # Create row views of the column where each view has dimension (1,linespacing)
+    # # sliding_window_view has width linespacing_pixels + 2 to accommodate edge columns
+    # column_as_strip = sliding_window_view(bathy_column, linespacing_pixels + 2)
+    # column_as_strip = bathy_data_cropped.wrap(column_as_strip)
+    #
+    #
+    # # Compute uncertainty from the surface view of the along-track column data
+    # column_residual_data = processor.compute_residual(column_as_strip)
+    # uncertainty = processor.estimate_uncertainty(method=method, residual_data=column_residual_data, is_strip=True)
+
+    uncertainty = uncertainty_from_column(bathy_column, processor, method)
+    # if base column is right, we need to flip the surface to ensure first element of the column
+    # would correspond to the point nearest to the column
+    if selected_column == 'right':
+        uncertainty = np.flip(uncertainty, axis=-1)
+        uncertainty = bathy_data.wrap(uncertainty)
+
+    # Make dimensions of residual_data and uncertainty the same to enable comparison
+    linespacing_pixels = int(processor.linespacing_meters / bathy_data.metadata['resolution'])
+    offset = linespacing_pixels // 2
+    residual = residual_data_as_strip[offset + 1:-offset, :]
+
+    # Cast to numpy
+    residual = np.array(residual)
+    uncertainty = np.array(uncertainty)
+
+    # Compare uncertainty estimate with the original residual
+    case_3 = cbook.boxplot_stats(np.abs(residual.ravel() - uncertainty.ravel()), labels=[f"Case 3 {selected_column}"])[0]
+    return case_3
 
 
-# def compute_residual(bathy_data: Bathymetry, params: Dict | None) -> Bathymetry:
-#     """
-#     Compute the residual error from estimating the depth using
-#     linear interpolation
-#
-#     This function computes the estimate for the depth strip
-#     using the edge values and returns the residual error
-#
-#     Parameters
-#     ----------
-#
-#     bathy_data : Bathymetry
-#                  Bathymetry object
-#
-#     params : Dict
-#             custom parameters based on depth type
-#
-#     Returns
-#     -------
-#     residual : Bathymetry
-#                Bathymetry object containing residual in the "depth"
-#
-#     """
-#
-#     depth_data = bathy_data.depth.copy()
-#
-#     # compute column indices based on pre-defined params
-#     column_indices = get_column_indices(array_len=depth_data.shape[1],
-#                                         resolution=bathy_data.metadata['resolution'],
-#                                         linespacing_meters=params['linespacing'],
-#                                         max_multiple=params['max_multiple'])
-#
-#     depth_data_strip = matrix2strip(depth_data,
-#                                          column_indices=column_indices,
-#                                          multiple=1)
-#
-#
-#     interpolated_strip = np.linspace(start=depth_data_strip[:, 0],
-#                                      stop=depth_data_strip[:, -1],
-#                                      num=depth_data_strip.shape[1])
-#
-#     interpolated_strip = interpolated_strip.T
-#     residual_strip = depth_data_strip - interpolated_strip
-#
-#     residual = strip2matrix(data_strip=residual_strip,
-#                              original_shape=depth_data.shape,
-#                              column_indices=column_indices)
-#
-#     new_bathy = deepcopy(bathy_data)
-#     new_bathy.depth = residual
-#
-#     return new_bathy
+def case_4_bp(bathy_data: RasterDataset,
+              processor:RasterProcessor,
+              method:str,
+              bias:float = 0.5) -> cbook.boxplot_stats:
+
+    # limit possible values of bias for the meantime
+    assert(bias in [0, 0.25, 0.5, 0.75, 1])
+
+    # Compute normal residual using complete coverage, across track data
+    residual_data = processor.compute_residual_surface(bathy_data)
+    residual_data_as_strip = processor.matrix2strip(residual_data)
+
+    # Crop original complete coverage data using only rows used in computing the residual
+    bathy_data_cropped = bathy_data[:, :residual_data.shape[1]]
+
+    # Update the "original size" metadata to reflect new size
+    bathy_data_cropped.orig_shape = bathy_data_cropped.shape
+
+    # Reshape original complete coverage data and extract data from preferred column
+    bathy_data_strip = processor.matrix2strip(bathy_data_cropped)
+    left_column = bathy_data_strip[:, 0]
+    right_column = bathy_data_strip[:, -1]
+
+    left_uncertainty = uncertainty_from_column(left_column, processor, method)
+    right_uncertainty = uncertainty_from_column(right_column, processor, method)
+    right_uncertainty = np.flip(right_uncertainty, axis=-1)
+    right_uncertainty = bathy_data.wrap(right_uncertainty)
+
+    # Make dimensions of residual_data and uncertainty the same to enable comparison
+    linespacing_pixels = int(processor.linespacing_meters / bathy_data.metadata['resolution'])
+    offset = linespacing_pixels // 2
+    residual = residual_data_as_strip[offset + 1:-offset, :]
+
+    # Using the bias, determine how much of each left and right surface views
+    # will be used to compose the proxy surface
+    num_cols = int(residual.shape[1] * bias)
+    surface_composite_strip = np.concatenate((left_uncertainty[:,:num_cols],
+                                    right_uncertainty[:,-num_cols:]), axis=1)
+    assert(surface_composite_strip.shape[1] == left_uncertainty.shape[1])
+    surface_composite_strip = bathy_data.wrap(surface_composite_strip)
+    composite_residual = processor.compute_residual(surface_composite_strip)
+
+    # Compute corresponding uncertainties from the surface views
+    uncertainty = processor.estimate_uncertainty(method=method, residual_data=composite_residual, is_strip=True)
+
+    # Cast to numpy
+    residual = np.array(residual)
+    uncertainty = np.array(uncertainty)
+
+    case_4 = cbook.boxplot_stats(np.abs(residual.ravel() - uncertainty.ravel()), labels=[f"Case 4 bias: {bias}"])[0]
+    return case_4
+
+
+def uncertainty_from_column(data_column: RasterDataset, processor:RasterProcessor, method:str):
+
+    linespacing_pixels = int(processor.linespacing_meters / data_column.metadata['resolution'])
+
+    # Create row views of the column where each view has dimension (1,linespacing)
+    # sliding_window_view has width linespacing_pixels + 2 to accommodate edge columns
+    column_as_strip = sliding_window_view(data_column, linespacing_pixels + 2)
+    column_as_strip = data_column.wrap(column_as_strip)
+
+    # Compute uncertainty from the surface view of the along-track column data
+    column_residual_data = processor.compute_residual(column_as_strip)
+    uncertainty = processor.estimate_uncertainty(method=method, residual_data=column_residual_data, is_strip=True)
+
+    return uncertainty
+
 
 def uncertainty_comparison(residuals, uncertainties):
     nonzero_idx = np.nonzero(
@@ -352,6 +265,8 @@ def multi_uncertainty_comparison(
     import matplotlib.pyplot as plt
 
     def uncertainty_comparison(residuals:np.ndarray, uncertainties:np.ndarray):
+
+
         nonzero_idx = np.nonzero(
             (residuals != 0) & (~np.isnan(residuals)) & (uncertainties != 0)
         )
